@@ -12,12 +12,12 @@
 #include "loader.h"
 #include "ufs.h"
 
-#define IMEM_RESTART_REASON	0x146aa65cUL	/* qcom,msm-imem restart_reason@65c */
+#define IMEM_RESTART_REASON	0x0c12565cUL	/* qcom,msm-imem@c125000 restart_reason@65c */
 #define RESTART_BOOTLOADER	0x77665500U
-#define PSHOLD			0x0c264000UL
+#define PSHOLD			0x0440b000UL
 
-#define GICD_BASE		0x17a00000UL
-#define GICR_BASE		0x17a60000UL
+#define GICD_BASE		0x0f200000UL
+#define GICR_BASE		0x0f300000UL
 #define GICR_SIZE		0x100000UL
 #define GICR_PE_SIZE		0x20000UL
 #define GICR_TYPER		0x08
@@ -59,6 +59,9 @@ static inline void wr8(uintptr_t a, uint8_t v) { *(volatile uint8_t *)a = v; }
 extern char secondary_entry[];
 
 static const char *stage;	/* set at runtime: no absolute pointers in data */
+/* topaz: CPU0-3 (A53) at MPIDR 0x0-0x3, CPU4-7 (A73) at 0x100-0x103 */
+static inline uint64_t cpu_mpidr(int i) { return (uint64_t)(i >> 2) << 8 | (i & 3); }
+
 static volatile uint64_t sec_mpidr[NR_CPUS];
 static volatile uint64_t sec_probe[4];	/* CPU1 redistributor write test */
 static volatile uint32_t irq_count, irq_other, irq_last;
@@ -165,8 +168,136 @@ void exc_handler(uint64_t slot, uint64_t *regs)
 
 static uintptr_t find_gicr(void);
 
+/*
+ * topaz: xnu needs the 16K translation granule. ABL starts us on a Kryo 260
+ * Silver core (Cortex-A53 class, TGran16 = 0); the Gold A73 cluster has it.
+ * The boot core wakes gold CPU 0x100 with this DTB and parks itself; gold
+ * runs the loader and xnu never sees the silver cluster.
+ */
+static volatile uint64_t gold_dtb;
+static void test_gic(void);
+
+/*
+ * xnu starts the other gold CPUs itself (PSCI CPU_ON), without the shim, so
+ * give their redistributors the same setup test_gic() gives the boot CPU:
+ * awake, SGIs/PPIs in Group 1, default priority. The frames are MMIO, so the
+ * boot CPU can do it for all of them.
+ */
+static void gold_gicr_prepare(void)
+{
+	for (uint32_t aff = 0x101; aff <= 0x103; aff++) {
+		uintptr_t r = 0;
+		for (uintptr_t off = 0; off < GICR_SIZE; off += GICR_PE_SIZE) {
+			uint64_t typer = rd64(GICR_BASE + off + GICR_TYPER);
+			if ((uint32_t)(typer >> 32) == aff) {
+				r = GICR_BASE + off;
+				break;
+			}
+			if (typer & (1 << 4))	/* Last */
+				break;
+		}
+		if (!r) {
+			con_hex("GICR miss", aff);
+			continue;
+		}
+		uint32_t waker = rd32(r + GICR_WAKER);
+		if (waker & 2) {
+			wr32(r + GICR_WAKER, waker & ~2U);
+			for (int i = 0; i < 100000 && (rd32(r + GICR_WAKER) & 4); i++)
+				;
+		}
+		wr32(r + GICR_IGROUPR0, 0xffffffff);
+		for (int id = 0; id < 32; id++)
+			wr8(r + GICR_IPRIORITYR + id, 0xa0);
+		/*
+		 * Also enable the timers and SGI1, as test_gic() does on the boot
+		 * CPU: without it a thread whose wakeup timer is armed on a
+		 * secondary never wakes (backboardd stuck in usleep()).
+		 */
+		wr32(r + GICR_ISENABLER0, (1U << VTIMER_INTID) | (1U << PTIMER_INTID) | (1U << SGI_INTID));
+		con_hex2("GICR+", "aff=", aff, "en=", rd32(r + GICR_ISENABLER0));
+	}
+}
+
+/*
+ * Core speed probe: ticks (19.2 MHz) for a fixed dependent-add loop with the
+ * I-cache on. Silver runs at whatever ABL set; gold has no cpufreq driver
+ * after PSCI CPU_ON, so a much larger count than silver means a low clock.
+ */
+static volatile uint64_t silver_ticks;
+
+static uint64_t speed_ticks(void)
+{
+	uint64_t sctlr = rsr("sctlr_el1");
+	wsr("sctlr_el1", sctlr | (1UL << 12));	/* I-cache on (fine with MMU off) */
+	__asm__ volatile("isb");
+	uint64_t t = now(), x = 0;
+	for (uint64_t i = 0; i < 20000000; i++)
+		__asm__ volatile("add %0, %0, #1" : "+r"(x));
+	t = now() - t;
+	wsr("sctlr_el1", sctlr);
+	__asm__ volatile("isb");
+	return t;
+}
+
+/*
+ * Gold cluster to its top cpufreq-hw level before xnu (which has no cpufreq
+ * driver): freq-domain1 0xf523000, LUT +0x110 (32-byte rows), PERF_STATE +0x920.
+ */
+static void gold_cpufreq_max(void)
+{
+	uintptr_t b = 0x0f523000;
+	uint32_t best = 0, best_khz = 0, prev = 0;
+	for (uint32_t i = 0; i < 12; i++) {
+		uint32_t v = rd32(b + 0x110 + i * 0x20);
+		uint32_t khz = ((v >> 30) & 3) ? 19200 * (v & 0xff) : 300000;
+		if (i && khz == prev)
+			break;
+		prev = khz;
+		if (khz > best_khz) {
+			best_khz = khz;
+			best = i;
+		}
+	}
+	uint32_t old = rd32(b + 0x920);
+	wr32(b + 0x920, best);
+	__asm__ volatile("dsb sy" ::: "memory");
+	con_hex2("CPUFREQ", "old=", old, "mhz=", best_khz / 1000);
+}
+
+static void __attribute__((noreturn)) gold_main(uint64_t dtb)
+{
+	uint64_t mmfr0 = rsr("id_aa64mmfr0_el1");
+
+	con_hex2("GOLD", "midr=", (uint32_t)rsr("midr_el1"), "mpidr=", (uint32_t)rsr("mpidr_el1"));
+	con_hex2("MMFR0", "lo=", (uint32_t)mmfr0, "tg16=", (mmfr0 >> 20) & 0xf);
+	con_skip();
+	if (((mmfr0 >> 20) & 0xf) == 0)
+		con_str("GOLD", "no 16K granule here either");
+	else {
+		/*
+		 * Required: without it xnu hangs after initCPU on gold (no SGI or
+		 * vtimer). It sets GICD EnableGrp1/ARE_NS, wakes gold's redistributor
+		 * and puts its SGIs/PPIs in Group 1; which part matters is still to
+		 * be narrowed down.
+		 */
+		test_gic();
+		gold_gicr_prepare();
+		gold_cpufreq_max();
+		uint64_t gt = speed_ticks();
+		con_hex2("SPEED", "silver=", (uint32_t)silver_ticks, "gold=", (uint32_t)gt);
+		delay_ms(1000);
+		con_skip();
+		con_str("LOADER", loader_boot(dtb));
+	}
+	for (;;)
+		__asm__ volatile("wfe");
+}
+
 void secondary_main(uint64_t idx)
 {
+	if (gold_dtb)
+		gold_main(gold_dtb);
 	sec_mpidr[idx] = rsr("mpidr_el1") | (1ULL << 63);
 	if (idx == 1) {
 		uintptr_t r = find_gicr();
@@ -190,12 +321,12 @@ static void __attribute__((unused)) test_smp(void)
 	int64_t ret[NR_CPUS];
 
 	for (int i = 1; i < NR_CPUS; i++)
-		ret[i] = smc(PSCI_CPU_ON, (uint64_t)i << 8, (uintptr_t)secondary_entry, i);
+		ret[i] = smc(PSCI_CPU_ON, cpu_mpidr(i), (uintptr_t)secondary_entry, i);
 	delay_ms(500);
 	for (int i = 1; i < NR_CPUS; i++) {
 		char label[] = "CPU0";
 		label[3] = '0' + i;
-		if (((uint64_t)i << 8) == self)
+		if (cpu_mpidr(i) == self)
 			con_str(label, "is boot cpu");
 		else
 			con_hex2(label, "ret=", (uint32_t)ret[i], "mpidr=",
@@ -321,7 +452,7 @@ static void test_gic(void)
 		wr8(r + GICR_IPRIORITYR + id, 0xa0);
 	wr32(r + GICR_ISENABLER0, (1U << VTIMER_INTID) | (1U << PTIMER_INTID) | (1U << SGI_INTID));
 	con_hex2("ENABLE", "was=", en_before, "now=", rd32(r + GICR_ISENABLER0));
-	(void)grp;
+	con_hex2("IGROUP0", "was=", grp, "now=", rd32(r + GICR_IGROUPR0));
 	(void)pri_before;
 
 	uint64_t ctlr = rsr("icc_ctlr_el1");
@@ -378,6 +509,24 @@ void shim_main(uint64_t dtb)
 	stage = "loader";
 	con_clear(RED);
 	con_str("SHIM", "sweet milestone 4: xnu loader");
+	/* topaz: xnu needs the 16K granule (TGran16 != 0); Cortex-A53 may lack it */
+	uint64_t mmfr0 = rsr("id_aa64mmfr0_el1");
+	con_hex2("MMFR0", "lo=", (uint32_t)mmfr0, "tg16=", (mmfr0 >> 20) & 0xf);
+	con_hex2("MIDR", "el1=", (uint32_t)rsr("midr_el1"), "mpidr=", (uint32_t)rsr("mpidr_el1"));
+	if (((mmfr0 >> 20) & 0xf) == 0) {
+		con_str("SILVER", "no 16K granule: handing off to gold CPU 0x100");
+		con_skip();
+		silver_ticks = speed_ticks();
+		gold_dtb = dtb;
+		__asm__ volatile("dsb sy" ::: "memory");
+		int64_t r = smc(PSCI_CPU_ON, 0x100, (uintptr_t)secondary_entry, 4);
+		if (r == 0) {
+			for (;;)	/* parked with DAIF masked (start.S) */
+				__asm__ volatile("wfi");
+		}
+		gold_dtb = 0;
+		con_hex("CPU_ON", (uint64_t)r);
+	}
 	con_skip();
 	const char *why = loader_boot(dtb);
 	con_str("LOADER", why);

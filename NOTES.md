@@ -2,6 +2,15 @@
 
 ## Agent handoff / active work (2026-10-15, latest)
 
+### >>> UPDATE 2026-10-19: Redmi Note 11 spes port <<<
+
+- User target is Redmi Note 11 `spes`; stock boot/vendor_boot/dtbo/vbmeta images are in ignored `backup/` (do not add them to git). `vendor_boot.img` contains the base DTB and vendor ramdisk. Extracted `/vendor_boot` DTB set is in ignored `dtb/vendor_boot_unpacked/`; DTBO overlays are in `dtb/dtbo_unpacked/`. Overlay 06 identifies `SPES KHAJE IDP nopmi`, compatible `qcom,khaje-idp`, SoC id 0x206; base DTB #08 is Khaje. This is a hardware observation from the supplied images.
+- User supplied Topaz reference `MakrSas/ios-topaz`, branch `topaz`, commit `d5dfb3b6003a1b691e11b742362ca16ff4c2d989`. Same SM6225/Khaje family. Adapted its Gold CPU handoff/GIC/boot-v4 payload-loader/shim and Khaje-specific ADT as initial spes base.
+- Added XNU patches `0082-spes-sm6225-cpu-topology.patch`, `0083-spes-armv8-no-lse-no-pan.patch`, `0084-spes-boot-on-gold-cpu.patch` (Topaz 0080–0082 adapted in sequence after local SWEET 0080–0081) and changed workflow to compile plain arm64 for Cortex-A53 ISA. Topaz's FT5452 touch patch is intentionally not included until spes panel/touch IC is identified from its active overlay.
+- Local shim compile/package succeeded with `MKBOOTIMG=/usr/share/android-tools/mkbootimg/mkbootimg.py shim/build.sh`. Output `shim/out/shim-boot.img` is a boot-v4 **diagnostic shim only** (empty ramdisk, no XNU payload), SHA256 `de0b8f51ba8b007d474f7b22747057f88b21374793a7ba1cfe4851f4e4f3920e`; unpacked header reports version 4. It has not been booted.
+- Remaining: run XNU build on GitHub Actions and fix any patch/build failures; derive correct RAM banks/boot args from spes live DT; build payload and boot image; hardware boot and iteration. `gh` is unavailable in this environment, so no XNU kernel artifact or bootable iOS image exists yet. Do not claim this kernel boots. No flash commands run.
+
+
 ### >>> UPDATE 2026-10-18 (read first, then the 10-17 handoff below) <<<
 
 **STATE at end of 2026-10-18 (evening):**
