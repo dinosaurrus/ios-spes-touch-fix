@@ -1,0 +1,51 @@
+diff --git a/bsd/dev/sweet_rpmh.c b/bsd/dev/sweet_rpmh.c
+--- a/bsd/dev/sweet_rpmh.c
++++ b/bsd/dev/sweet_rpmh.c
+@@ -234,7 +234,7 @@
+ 		for (unsigned c = 0; c < rh_ncpt; ++c) {
+ 			if ((enabled & (1u << c)) &&
+ 			    (rh_read(rh_tcs, b + RH_ADDR + c * RH_CMD_STRIDE) & ~15u) == address) {
+-				printf("SWEET RPMH: conflicting inherited L11C request in TCS%u\n", t);
++				printf("SWEET RPMH: conflicting inherited request in TCS%u\n", t);
+ 				return EBUSY;
+ 			}
+ 		}
+@@ -320,16 +320,18 @@
+ 		return EIO;
+ 	}
+ 	rh_poisoned = false;
+-	printf("SWEET RPMH: L11C ACTIVE vote complete (rail voltage requires hardware verification)\n");
++	printf("SWEET RPMH: ACTIVE vote complete (rail voltage requires hardware verification)\n");
+ 	return 0;
+ }
+ 
+ int
+ sweet_rpmh_vreg_enable(const char *res, unsigned mv)
+ {
+-	/* Board-specific helper: do not apply PMIC5-LDO policy to arbitrary resources. */
+-	if (!res || strcmp(res, "ldoc11") || mv < 2950 || mv > 3400) {
+-		printf("SWEET RPMH: expected ldoc11 and 2950..3400 mV\n");
++	/* Keep the known Sweet rail and the Spes touch I/O rail narrowly scoped. */
++	bool sweet_touch_rail = res && strcmp(res, "ldoc11") == 0 && mv >= 2950 && mv <= 3400;
++	bool spes_i2c_rail = res && strcmp(res, "ldoa9") == 0 && mv == 1800;
++	if (!sweet_touch_rail && !spes_i2c_rail) {
++		printf("SWEET RPMH: only ldoc11 2950..3400 mV or spes ldoa9 1800 mV is supported\n");
+ 		return EINVAL;
+ 	}
+ 	if (__atomic_exchange_n(&rh_lock, 1, __ATOMIC_ACQUIRE)) {
+diff --git a/bsd/dev/sweet_touch.c b/bsd/dev/sweet_touch.c
+--- a/bsd/dev/sweet_touch.c
++++ b/bsd/dev/sweet_touch.c
+@@ -578,6 +578,12 @@
+ 	/* TopazTouch touch.c: IRQ input, AVDD on, I2C pins, then the reset pulse. */
+ 	touch_gpio(TOUCH_PIN_IRQ, 0, 3, 3, false, false);       /* CTL 0xc3 */
+ 	touch_gpio(TOUCH_PIN_AVDD, 0, 3, 3, true, true);        /* CTL 0x2c3, high */
++	/* The Spes overlay maps vcc_i2c-supply to PM6125 L9A at 1.8 V. */
++	int power_error = sweet_rpmh_vreg_enable("ldoa9", 1800);
++	if (power_error) {
++		printf("SWEET TOUCH: Spes L9A vcc_i2c enable failed %d; probes skipped\n", power_error);
++		goto out;
++	}
+ 	touch_gpio(6, 1, 0, 0, false, false);                   /* qup2 SDA, CTL 0x4 */
+ 	touch_gpio(7, 1, 0, 0, false, false);                   /* qup2 SCL */
+ 	touch_gpio(TOUCH_PIN_RESET, 0, 3, 3, true, false);      /* CTL 0x2c3, low */
