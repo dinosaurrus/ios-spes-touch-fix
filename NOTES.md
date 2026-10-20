@@ -10,6 +10,12 @@
 - Local shim compile/package succeeded with `MKBOOTIMG=/usr/share/android-tools/mkbootimg/mkbootimg.py shim/build.sh`. Output `shim/out/shim-boot.img` is a boot-v4 **diagnostic shim only** (empty ramdisk, no XNU payload), SHA256 `de0b8f51ba8b007d474f7b22747057f88b21374793a7ba1cfe4851f4e4f3920e`; unpacked header reports version 4. It has not been booted.
 - Remaining: run XNU build on GitHub Actions and fix any patch/build failures; derive correct RAM banks/boot args from spes live DT; build payload and boot image; hardware boot and iteration. `gh` is unavailable in this environment, so no XNU kernel artifact or bootable iOS image exists yet. Do not claim this kernel boots. No flash commands run.
 
+### >>> UPDATE 2026-10-20: Spes panic / touch image <<<
+
+- User photo shows `pmap_assert_free: Found at least one mapping to 0x9c000000` followed by `handshake structure not initialized`. Spes Khaje's `cont_splash_region` is `0x5c000000` (15 MiB), unlike the old Sweet XNU debug mapping at `0x9c000000`. XNU patch `0090-spes-early-framebuffer-address.patch` updates the three early/final XNU framebuffer aliases. The shim's `FB_BASE` and `FB_PHYS` must also be `0x5c000000`; otherwise its boot args can reintroduce the stale address. These are now aligned with generated Spes ADT.
+- The source's Linux FT3418 driver maps the panel IC to FocalTech IDs `0x54/0x52`; Spes XNU patches `0088`/`0089` select QUP0 and enable the L9A 1.8 V I2C rail. The packaged payload includes `sweetspes=1`. This is a source/build match, **not yet a physical touchscreen test**.
+- Built `/home/dino/ios-spes-final-output/spes-touch-fixed-final.img` from macOS CI run `39442227148`, with regenerated Spes ADT and the payload embedded in the boot-v4 kernel. `unpack_bootimg` confirms header v4, payload version 1 / 10 segments, Spes command line and FT3418 touch code. SHA256 `6515d89d10baca9af38ac43f9d485fe7889cbb72ec80cb9998b352dc8d6d7ec3`. Only temporary `fastboot boot` should be used for the next device check; `fastboot devices` was empty during this build. No hardware boot or touch result claimed.
+
 
 ### >>> UPDATE 2026-10-18 (read first, then the 10-17 handoff below) <<<
 
