@@ -8,3 +8,13 @@ shim/out/
 xnu/out/
 xnu/out-*/
 __pycache__/
+
+# Local build products and device logs
+hybrid_build/out/
+hybrid_build/*.img
+hybrid_build/*.bin
+hybrid_build/*.adt
+xnu-buildtree/
+xnu-kernel/
+pstore/
+ios-sweet/

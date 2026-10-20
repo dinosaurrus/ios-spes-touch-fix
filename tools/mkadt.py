@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Build the minimal Apple Device Tree that the TOPAZ xnu needs to boot.
+"""Build the minimal Apple Device Tree for the SM6225 Topaz and Spes ports.
 
-Only what the early boot path actually reads (see NOTES.md); every MMIO
-address comes from the topaz (Redmi Note 12 4G, SM6225 khaje) live FDT. Usage:  mkadt.py OUT.adt [--dump] [--qemu] [--highmem]
+Only what the early boot path actually reads (see NOTES.md); the shared SoC
+addresses come from SM6225/Khaje device trees. Device identity is selected
+with --device topaz|spes. Usage: mkadt.py OUT.adt [--device topaz|spes] [--dump] [--qemu] [--highmem]
 """
 import hashlib, os, struct, sys
 
@@ -18,6 +19,11 @@ MEM_SIZE = 0x4d000000
 # limited below 4G.
 HIGH_PHYS_BASE = 0x140000000
 HIGH_MEM_SIZE = 0x100000000
+# Spes conservative profile: the 4 GiB SKU has the 3 GiB middle bank at
+# 0x80000000. Keep XNU within that bank; the upper bank used by Topaz's 8 GiB
+# profile is not present on every Spes SKU.
+SPES_PHYS_BASE = 0x80000000
+SPES_MEM_SIZE = 0xc0000000
 # --midmem (phone only): the middle and upper banks as one range, 0x80000000 +
 # 3G + 4G = 7G up to 0x2_40000000. No fixed carve-out is above 0x63900000, and it
 # gives the kernel RAM below 4 GiB, which the GPU needs (it does not reach above).
@@ -31,7 +37,10 @@ GICD, GICD_SIZE = 0x0f200000, 0x10000
 GICR, GICR_SIZE = 0x0f300000, 0x100000
 # cont_splash_region left lit by ABL
 FB, FB_SIZE = 0x5c000000, 0xf00000
-SWEET_ECID = 0x544f50415a000001  # 'TOPAZ' + 1, synthetic
+DEVICE_ECIDS = {
+    'topaz': 0x544f50415a000001,  # 'TOPAZ' + 1, synthetic
+    'spes':  0x5350455300000001,  # 'SPES' + 1, synthetic
+}
 FB_W, FB_H, FB_STRIDE = 1080, 2400, 1080 * 4
 # Internal UFS host (ufshc@4804000 "ufs_mem"); QEMU virt has none
 UFS, UFS_SIZE = 0x04804000, 0x3000
@@ -41,7 +50,6 @@ VTIMER_INTID = 19
 QEMU_GICD, QEMU_GICR, QEMU_TIMEBASE = 0x08000000, 0x080a0000, 62500000
 QEMU_VTIMER_INTID = 27
 
-BOOT_MANIFEST_HASH = hashlib.sha384(b'topaz boot manifest').digest()
 
 # The iOS userland is the iPhone X (iPhone10,3 / D22AP) IPSW. MobileGestalt
 # derives product type, device class, home-button-less UI, artwork etc. from
@@ -76,10 +84,19 @@ def node(name, props=(), children=()):
     return n
 
 
-def build(seed=None, qemu=False, highmem=False, native=False, midmem=False):
-    """qemu=True: same tree, but with QEMU virt's GIC addresses and CNTFRQ (tools/qemu-sweet.py)."""
+def build(seed=None, qemu=False, highmem=False, native=False, midmem=False, device='topaz'):
+    """Build the shared Khaje ADT with a device-specific identity.
+
+    qemu=True substitutes QEMU virt's GIC addresses and CNTFRQ.
+    """
+    if device not in DEVICE_ECIDS:
+        raise ValueError(f'unsupported device profile: {device}')
+    ecid = DEVICE_ECIDS[device]
+    boot_manifest_hash = hashlib.sha384(f'{device} boot manifest'.encode()).digest()
     phys_base, mem_size = ((MID_PHYS_BASE, MID_MEM_SIZE) if midmem else
-                           (HIGH_PHYS_BASE, HIGH_MEM_SIZE) if highmem else (PHYS_BASE, MEM_SIZE))
+                           (HIGH_PHYS_BASE, HIGH_MEM_SIZE) if highmem else
+                           (SPES_PHYS_BASE, SPES_MEM_SIZE) if device == 'spes' else
+                           (PHYS_BASE, MEM_SIZE))
     gicd, gicr, timebase = (QEMU_GICD, QEMU_GICR, QEMU_TIMEBASE) if qemu else (GICD, GICR, TIMEBASE)
     seed = seed if seed is not None else os.urandom(64)
     phandle = iter(range(1, 1000))
@@ -91,12 +108,12 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False):
         ('dram-size', u64(mem_size)),
         ('random-seed', seed),
         ('debug-enabled', u32(1)),
-        ('firmware-version', cstr('topaz-shim')),
-        ('system-firmware-version', cstr('topaz-shim')),
+        ('firmware-version', cstr(f'{device}-shim')),
+        ('system-firmware-version', cstr(f'{device}-shim')),
         # iBoot's SHA-384 of the boot manifest; /sbin/mount -P 1 exits unless
         # it exists (bind mounts /private/preboot/<hex>/usr/standalone/firmware,
         # tolerating a missing directory). Fixed stand-in value.
-        ('boot-manifest-hash', BOOT_MANIFEST_HASH),
+        ('boot-manifest-hash', boot_manifest_hash),
         # libimg4 (cryptexd) aborts "failed to get crypto algorithm" without
         # it; real A11+ device trees say sha2-384.
         ('crypto-hash-method', cstr('sha2-384')),
@@ -110,7 +127,7 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False):
         # files), so e.g. DataMigration never records LastSystemVersion and
         # migrates on every boot. Synthetic ECID (not the phone's); chip-id
         # of the A11 that the iPhone X userland expects.
-        ('unique-chip-id', struct.pack('<Q', SWEET_ECID)),
+        ('unique-chip-id', struct.pack('<Q', ecid)),
         ('chip-id', u32(0x8015)),
         # Security status as on a dev-fused, undemoted board (tuple 0,0,1,1):
         # MobileGestalt reads these from /chosen, and mobileactivationd's
@@ -227,11 +244,11 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False):
 
     # Identity of the iPhone X whose userland runs here: compatible[0] is
     # hw.model/hw.target (D22AP), model is hw.machine/hw.product
-    # (iPhone10,3). 'xiaomi,sweet' and qcom,kryo470 stay because the
-    # SweetPlatformExpert and CPU IONameMatch still use them.
+    # (iPhone10,3). Keep the physical device alias and xiaomi,sweet because
+    # the existing SweetPlatformExpert and CPU IONameMatch use that alias.
     return node('device-tree', [
         ph(),
-        ('compatible', cstr('D22AP') + cstr('iPhone10,3') + cstr('xiaomi,topaz') + cstr('xiaomi,sweet') + cstr('qcom,khaje') + cstr('AppleARM')),
+        ('compatible', cstr('D22AP') + cstr('iPhone10,3') + cstr(f'xiaomi,{device}') + cstr('xiaomi,sweet') + cstr('qcom,khaje') + cstr('AppleARM')),
         ('model', cstr('iPhone10,3')),
         ('target-type', cstr('D22')),
         ('target-sub-type', cstr('D22AP')),
@@ -242,10 +259,23 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False):
 
 
 if __name__ == '__main__':
-    root = build(qemu='--qemu' in sys.argv, highmem='--highmem' in sys.argv,
-                 native='--native' in sys.argv, midmem='--midmem' in sys.argv)
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('output', help='output ADT path')
+    parser.add_argument('--device', choices=sorted(DEVICE_ECIDS), default='topaz',
+                        help='physical board profile (default: topaz)')
+    parser.add_argument('--qemu', action='store_true', help='use QEMU virt GIC/timer values')
+    parser.add_argument('--highmem', action='store_true', help='place kernel RAM in upper DDR')
+    parser.add_argument('--midmem', action='store_true', help='place kernel RAM in middle DDR')
+    parser.add_argument('--native', action='store_true', help='use native 1080x2400 display canvas')
+    parser.add_argument('--dump', action='store_true', help='print the serialized ADT')
+    args = parser.parse_args()
+    root = build(qemu=args.qemu, highmem=args.highmem, native=args.native,
+                 midmem=args.midmem, device=args.device)
     blob = adt.serialize(root)
-    open(sys.argv[1], 'wb').write(blob)
-    if '--dump' in sys.argv:
+    with open(args.output, 'wb') as out:
+        out.write(blob)
+    if args.dump:
         adt.dump(adt.parse(blob)[0])
-    print(f'{sys.argv[1]}: {len(blob)} bytes', file=sys.stderr)
+    print(f'{args.output}: {len(blob)} bytes ({args.device})', file=sys.stderr)

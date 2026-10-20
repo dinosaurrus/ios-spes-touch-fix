@@ -21,11 +21,16 @@ screen (image versions v8-v14 in NOTES.md):
                   NULL OpenGL function without a GPU -> mediaserverd crash loop)
   SpringBoard     BKNoWatchdogs (one slow CPU path, no scene-create watchdog
                   kills), no cloud-configuration UI
-  Setup           skipped: SetupDone, SetupFinishedAllSteps, SetupVersion 11,
-                  mini-buddy flags off
+  Setup           skipped only after mobileactivationd's system data container
+                  exists and the activation data ark has been seeded
   activation      mobileactivationd data ark seeded; the actual Activated state
                   comes from its Hactivation branch, selected by the /chosen
                   security-status properties in tools/mkadt.py
+
+On a brand-new root image, run this once before boot. The system container
+does not exist yet, so this leaves Setup enabled. Boot once to let iOS create
+the container, then run the script again against the image before the
+home-screen boot. This is the sequence used by the Topaz v14 image.
 """
 import glob, os, plistlib, shutil, sys
 
@@ -52,6 +57,22 @@ def merge_pref(root, name, values):
     data.update(values)
     save(path, data, MOBILE, MOBILE, 0o600)
     print('pref', name, sorted(values))
+
+
+def remove_pref_keys(root, name, keys):
+    """Remove stale Setup-skipping keys while activation is not ready."""
+    path = os.path.join(root, 'private/var/mobile/Library/Preferences', name + '.plist')
+    if not os.path.exists(path):
+        return
+    st = os.stat(path)
+    data = load(path)
+    removed = sorted(k for k in keys if k in data)
+    if not removed:
+        return
+    for key in removed:
+        del data[key]
+    save(path, data, st.st_uid, st.st_gid, st.st_mode & 0o7777)
+    print('removed stale Setup prefs', name, removed)
 
 
 def launchd(root):
@@ -94,7 +115,7 @@ def activation(root):
     c = find_container(root, 'Data/System', 'com.apple.mobileactivationd')
     if c is None:
         print('warning: no mobileactivationd system container in the image; skipped data ark')
-        return
+        return False
     d = os.path.join(c, 'Library/internal')
     os.makedirs(d, exist_ok=True)
     os.chown(d, MOBILE, MOBILE)
@@ -105,6 +126,7 @@ def activation(root):
         '-DataMigrationCompleted': True, '-PreSydroDataMigrationCompleted': True,
     }, MOBILE, MOBILE, 0o600)
     print('data ark', d)
+    return True
 
 
 def audio(root):
@@ -128,25 +150,39 @@ def main():
     root = sys.argv[1]
     launchd(root)
     containers(root)
-    activation(root)
+    activation_ready = activation(root)
     audio(root)
     merge_pref(root, 'com.apple.migration', {
         'LastSystemVersion': BUILD,
         'DMUserDataDisposition': {'SyntheticDidUpgrade': False, 'buildVersion': BUILD}})
     merge_pref(root, 'com.apple.springboard', {
         'BKNoWatchdogs': True,
-        'FBLaunchWatchdogExceptions': {'com.apple.purplebuddy': 100.0},
-        'MCForceShowCloudConfigurationUI': False})
-    merge_pref(root, 'com.apple.purplebuddy', {
-        'SetupDone': True, 'SetupFinishedAllSteps': True, 'SetupVersion': 11,
-        'daemonizeNeedsToRun': False})
-    merge_pref(root, 'com.apple.purplebuddy.notbackedup', {
-        k: False for k in ('ShouldRunDiagnosticsMiniBuddy', 'ShouldRunHSA2MiniBuddy',
-                           'ShouldRunKeychainSyncMiniBuddy', 'ShouldRunMesaMiniBuddy',
-                           'ShouldRunPaymentMiniBuddy', 'ShouldRunStandardMiniBuddy',
-                           'SilentICDPUpgrade')})
-    merge_pref(root, 'com.apple.managedconfiguration.notbackedup', {
-        'LockdownActivationIndicatesCloudConfigurationAvailable': False})
+        'FBLaunchWatchdogExceptions': {'com.apple.purplebuddy': 100.0}})
+    if activation_ready:
+        merge_pref(root, 'com.apple.springboard', {
+            'MCForceShowCloudConfigurationUI': False})
+        merge_pref(root, 'com.apple.purplebuddy', {
+            'SetupDone': True, 'SetupFinishedAllSteps': True, 'SetupVersion': 11,
+            'daemonizeNeedsToRun': False})
+        merge_pref(root, 'com.apple.purplebuddy.notbackedup', {
+            k: False for k in ('ShouldRunDiagnosticsMiniBuddy', 'ShouldRunHSA2MiniBuddy',
+                               'ShouldRunKeychainSyncMiniBuddy', 'ShouldRunMesaMiniBuddy',
+                               'ShouldRunPaymentMiniBuddy', 'ShouldRunStandardMiniBuddy',
+                               'SilentICDPUpgrade')})
+        merge_pref(root, 'com.apple.managedconfiguration.notbackedup', {
+            'LockdownActivationIndicatesCloudConfigurationAvailable': False})
+    else:
+        remove_pref_keys(root, 'com.apple.springboard', (
+            'MCForceShowCloudConfigurationUI',))
+        remove_pref_keys(root, 'com.apple.purplebuddy', (
+            'SetupDone', 'SetupFinishedAllSteps', 'SetupVersion', 'daemonizeNeedsToRun'))
+        remove_pref_keys(root, 'com.apple.purplebuddy.notbackedup', (
+            'ShouldRunDiagnosticsMiniBuddy', 'ShouldRunHSA2MiniBuddy',
+            'ShouldRunKeychainSyncMiniBuddy', 'ShouldRunMesaMiniBuddy',
+            'ShouldRunPaymentMiniBuddy', 'ShouldRunStandardMiniBuddy', 'SilentICDPUpgrade'))
+        remove_pref_keys(root, 'com.apple.managedconfiguration.notbackedup', (
+            'LockdownActivationIndicatesCloudConfigurationAvailable',))
+        print('Setup remains enabled until the first boot creates the mobileactivationd data container; rerun tweaks before the home-screen boot')
 
 
 if __name__ == '__main__':

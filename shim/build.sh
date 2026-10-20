@@ -33,7 +33,7 @@ if [ -n "${1:-}" ]; then
 else
 	(cd out && rm -rf rd && mkdir rd && cd rd && find . | cpio -o -H newc --quiet | gzip -9 > ../ramdisk.bin)
 fi
-${MKBOOTIMG:-python3 /home/makr/work/topaz/mkbootimg_src/mkbootimg.py} --header_version 4 --kernel out/Image --ramdisk out/ramdisk.bin \
+${MKBOOTIMG:-python3 /home/dino/android/lineage/system/tools/mkbootimg/mkbootimg.py} --header_version 4 --kernel out/Image --ramdisk out/ramdisk.bin \
 	--os_version 13.0.0 --os_patch_level 2025-01 \
 	--cmdline "console=null" -o out/shim-boot.img
 # Host render of the console layout.

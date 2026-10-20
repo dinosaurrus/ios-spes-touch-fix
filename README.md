@@ -8,6 +8,19 @@ As of **2026-10-18** the phone boots to the **iOS home screen**. You can unlock 
 
 > Experimental bring-up, not a usable phone OS. Many things are missing or stubbed (see below), and Apple's security model is mostly switched off. It installs into the `userdata` partition and so **erases Android's user data**.
 
+## Spes and Topaz bring-up
+
+The `spes-port` branch also targets Redmi Note 11 (`spes`) and uses Redmi Note 12 4G (`topaz`) as the SM6225/Khaje reference. The XNU build remains `MACHINE_CONFIG=SWEET`, as in the Topaz port; `kernel.development.sweet` is the artifact name, not a claim that the device is a Redmi Note 10 Pro. The boot ADT carries the selected physical-device profile:
+
+```sh
+python3 tools/mkadt.py shim/out/spes.adt --device spes
+python3 tools/mkadt.py shim/out/topaz.adt --device topaz
+```
+
+The Spes profile conservatively places XNU in a 3 GiB middle-bank range at `0x80000000`, avoiding the upper-bank address used by the larger Topaz profile; `--highmem` remains an explicit override. The exact physical RAM map still needs confirmation from a live Spes FDT. The active Spes DT overlay identifies `qcom,khaje-idp`, a 1080×2400 panel, and `focaltech,fts` touch at I²C `0x38`; Topaz's FT5452 touch driver must not be copied to Spes. The iPhone X userland intentionally uses a 1125×2436 logical display over the 1080×2400 panel. Patch `0085` ports Topaz `0114`'s 16-byte panel-window alignment and keeps touch coordinates aligned with that window. This fixes scanout/input alignment only; it does not explain a `backboardd` loop by itself.
+
+Topaz's later patches are not one generic fix: several directly program its MDP/DSI/panel and FT5452 hardware. The Spes boot currently reaches `backboardd` and creates IOSurfaces, but no Home screen is confirmed yet. Its first root-image tweak also ran before iOS had created the `mobileactivationd` system container, so the activation data ark was skipped. On a fresh image the tweak script now leaves Setup enabled in that case; boot once so iOS creates its system container, then apply the tweaks again before the home-screen boot. Do not claim the Spes ROM is complete until that boot reaches SpringBoard.
+
 ## What works
 
 | Area | State |
@@ -86,7 +99,7 @@ sudo umount /mnt/iosroot
 img2simg ios16-root.img ios16-root.simg
 ```
 
-`mkiosroot.sh` copies the OS volume and both cryptexes into one case-sensitive journaled HFS+ volume. It adds the dyld cache links, the plain system keybag and the log directories the daemons expect. `sweet-root-tweaks.py` applies the bring-up changes: it skips Setup, seeds the activation state, removes the baseband daemon, disables the watchdogs that kill slow apps and the crash-looping media paths, and so on. The script's header explains each change.
+`mkiosroot.sh` copies the OS volume and both cryptexes into one case-sensitive journaled HFS+ volume. It adds the dyld cache links, the plain system keybag and the log directories the daemons expect. `sweet-root-tweaks.py` removes the baseband daemon, disables the watchdogs that kill slow apps and crash-looping media paths, and seeds activation after the `mobileactivationd` system container exists. For a fresh image, boot once with Setup enabled, then rerun the script on the image before skipping Setup. The script's header explains each change.
 
 The device tree builder copies `/product` from the real iPhone X device tree, which MobileGestalt needs. Extract it once, without downloading the whole IPSW:
 
@@ -117,6 +130,7 @@ What the less obvious boot-args do:
 | `sweetfb_noconsole=1` | Stop drawing kernel text over the GUI. It still goes to the persistent log; panics are drawn |
 | `sweetfb_hz=30` | Panel refresh rate of the CPU copy |
 | `sweettouch=0`, `sweetkeys=0` | Disable the touch or button driver |
+| `sweetspes=1` | Enable only Spes touch support (requires a kernel rebuilt with patches 0088 and 0089) |
 
 ### 4. Flash the root and boot
 
