@@ -1,0 +1,14 @@
+diff --git a/bsd/sweet_hfs/core/hfs_vfsops.c b/bsd/sweet_hfs/core/hfs_vfsops.c
+--- a/bsd/sweet_hfs/core/hfs_vfsops.c
++++ b/bsd/sweet_hfs/core/hfs_vfsops.c
+@@ -1296,6 +1296,10 @@
+ 		}
+ 	}
+ 
++	/* SWEET runs from flash-backed phone storage (UFS). HFS_SSD disables the
++	 * relocation copy path on flash, avoiding cluster_write-based relocation. */
++	hfsmp->hfs_flags |= HFS_SSD;
++
+ 	/* See if the underlying device is Core Storage or not */
+ 	dk_corestorage_info_t cs_info;
+ 	memset(&cs_info, 0, sizeof(dk_corestorage_info_t));
