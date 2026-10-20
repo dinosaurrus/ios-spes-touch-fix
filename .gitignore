@@ -18,3 +18,5 @@ xnu-buildtree/
 xnu-kernel/
 pstore/
 ios-sweet/
+
+hybrid_build/
