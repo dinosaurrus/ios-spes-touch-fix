@@ -1,0 +1,31 @@
+diff --git a/bsd/dev/sweet_touch.c b/bsd/dev/sweet_touch.c
+--- a/bsd/dev/sweet_touch.c
++++ b/bsd/dev/sweet_touch.c
+@@ -27,7 +27,7 @@
+ #define TOUCH_WEST_PA    0x00500000u /* TLMM 0x400000 + WEST tile: GPIO 6/7/80/86 */
+ #define TOUCH_SOUTH_PA   0x00900000u /* TLMM 0x400000 + SOUTH tile: GPIO 98 */
+ #define TOUCH_GCC_VOTE   0x7900cu    /* QUP0 wrapper + SE2 vote, bits 0x13c0 */
+-#define TOUCH_RCG       0x3f3a8u    /* QUP0 S2 CMD; CFG +4, CBCR -4 */
++#define TOUCH_RCG       0x1f3a8u    /* Khaje GCC QUP0 S2 CMD; CFG +4, CBCR -4 */
+ #define TOUCH_PIN_RESET  86u
+ #define TOUCH_PIN_IRQ    80u
+ #define TOUCH_PIN_AVDD   98u
+@@ -575,7 +575,17 @@
+ 	}
+ 	printf("SWEET TOUCH: all MMIO mappings ready\n");
+-	if (!touch_clocks() || !touch_se_init()) {
++	printf("SWEET TOUCH: QUP0/SE2 clock init begin (CMD=%#x CBCR=%#x)\n",
++	    TOUCH_RCG, TOUCH_RCG - 4u);
++	if (!touch_clocks()) {
++		printf("SWEET TOUCH: QUP0/SE2 clock init failed\n");
++		goto out;
++	}
++	printf("SWEET TOUCH: QUP0/SE2 clock init ready\n");
++	printf("SWEET TOUCH: SE2 init begin\n");
++	if (!touch_se_init()) {
++		printf("SWEET TOUCH: SE2 init failed\n");
+ 		goto out;
+ 	}
++	printf("SWEET TOUCH: SE2 init ready\n");
+ 	printf("SWEET TOUCH: TLMM reset=%#x irq=%#x avdd=%#x\n",
+ 	    touch_rd(st.west, TOUCH_GPIO_IO(TOUCH_PIN_RESET)),
