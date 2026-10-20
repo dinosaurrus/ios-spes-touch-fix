@@ -2,6 +2,12 @@
 
 ## Agent handoff / active work (2026-10-20, newest)
 
+### >>> UPDATE 2026-10-20: APID map count correction <<<
+- New user photo from the async probe candidate shows all three PMIC arbiter windows map, then prints `SWEET TOUCH: starting in 45 s`; there is no version/APID summary yet. The async worker has not reported completion, while the UFS startup thread continues.
+- Compared XNU’s APID-count read with `/home/dino/ios-spes/kernel/sm6225/drivers/spmi/spmi-pmic-arb.c`: register `core+0x4` is `PMIC_ARB_INT_EN`, not an APID count. Linux determines the V5 table bound from `core_size` and scans offsets `0x900 + 4*n`. The old Spes poller incorrectly interpreted INT_EN bits as the number of APID entries.
+- Added `0100-spes-spmi-apid-count.patch`: no longer reads `core+0x4`; derives count from the DT-sized core window, scans the 512 V5 entries available in its 0x1100-byte window, and emits before/after version-read plus scan-count markers. Patch dry-run succeeds on the 0099 source.
+- Package helper now bases the next distinct `spes-touch-boot-fixed-power-volume-keys-apid.img` on the user-tested async image. Build/device validation pending.
+
 ### >>> UPDATE 2026-10-20: key-probe startup stall report <<<
 - User tested the key-enabled image and supplied a photo ending at `dll_init: All the created dll kernel threads have been scheduled...`. The visible HID “buttons registered” line only registers the HID service; it does not prove the PMIC poller ran. The image payload command line was independently unpacked and contains `sweetspes=1`. No `SWEET KEYS: target=...` or Spes `SWEET TOUCH: mapping...` startup diagnostics are visible in the photo.
 - Likely cause: patch 0098 runs SPMI setup synchronously inside `sweet_ufs_init`, before invoking touch. The screen alone cannot prove the exact blocking instruction, but the call order could stall startup and prevent touch init if the arbiter read/mapping is slow.

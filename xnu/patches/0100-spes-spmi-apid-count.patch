@@ -1,0 +1,54 @@
+# V5 APID map spans core+0x900; core+0x4 is INT_EN, never a count.
+# Derive its entry count from the mapped DT resource length.
+--- a/bsd/dev/sweet_keys.c
++++ b/bsd/dev/sweet_keys.c
+@@ -29,6 +29,7 @@
+ #define KEYS_NO_APID     0xffffu
+ 
+ static vm_offset_t keys_core, keys_obs, keys_cnfg;
++static vm_size_t keys_core_size;
+ static uint16_t keys_pon_apid = KEYS_NO_APID, keys_gpio_apid = KEYS_NO_APID;
+ static uint32_t keys_version, keys_last_status, keys_gpio_rt = KEYS_GPIO_RT;
+ static int keys_spes;
+@@ -139,7 +140,8 @@
+ 	if (spes == 1) {
+ 		/* SM6225 PMIC arbiter bases from the active Khaje DTB. */
+ 		printf("SWEET KEYS: map begin core pa=%#x\n", SPES_KEYS_CORE_PA);
+-		keys_core = ml_io_map(SPES_KEYS_CORE_PA, 0x1100);
++		keys_core_size = 0x1100;
++		keys_core = ml_io_map(SPES_KEYS_CORE_PA, keys_core_size);
+ 		printf("SWEET KEYS: map core returned va=%p\n", (void *)keys_core);
+ 		printf("SWEET KEYS: map begin config pa=%#x\n", SPES_KEYS_CNFG_PA);
+ 		keys_cnfg = ml_io_map(SPES_KEYS_CNFG_PA, 0x26000);
+@@ -149,7 +151,8 @@
+ 		printf("SWEET KEYS: map observer returned va=%p\n", (void *)keys_obs);
+ 		keys_gpio_rt = SPES_KEYS_GPIO_RT;
+ 	} else {
+-		keys_core = ml_io_map(KEYS_CORE_PA, 0x2000);
++		keys_core_size = 0x2000;
++		keys_core = ml_io_map(KEYS_CORE_PA, keys_core_size);
+ 		keys_cnfg = ml_io_map(KEYS_CNFG_PA, 0x1000);
+ 		keys_obs = ml_io_map(KEYS_OBS_PA, 0x10000);
+ 	}
+@@ -157,10 +160,18 @@
+ 		printf("SWEET KEYS: MMIO mapping failed\n");
+ 		return;
+ 	}
++	printf("SWEET KEYS: version read begin va=%p\n", (void *)keys_core);
+ 	keys_version = keys_rd(keys_core, 0);
+-	uint32_t count = keys_rd(keys_core, 4) & 0x7ffu;
+-	if (keys_version < 0x50000000u || keys_version >= 0x70000000u ||
+-	    count == 0 || count > 512) {
++	printf("SWEET KEYS: version read returned=%#x\n", keys_version);
++	/* Offset 0x4 is PMIC_ARB_INT_EN, not an APID count register. */
++	uint32_t count = keys_core_size > 0x900u ?
++	    (uint32_t)((keys_core_size - 0x900u) / 4u) : 0;
++	if (count > 512u) {
++		count = 512u;
++	}
++	printf("SWEET KEYS: APID map scan count=%u core-size=%#lx\n",
++	    count, (unsigned long)keys_core_size);
++	if (keys_version < 0x50000000u || keys_version >= 0x70000000u || count == 0) {
+ 		printf("SWEET KEYS: unsupported arbiter version=%#x apids=%u\n",
+ 		    keys_version, count);
+ 		return;
