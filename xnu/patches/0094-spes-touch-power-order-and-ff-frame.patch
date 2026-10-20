@@ -1,0 +1,80 @@
+diff --git a/bsd/dev/sweet_touch.c b/bsd/dev/sweet_touch.c
+--- a/bsd/dev/sweet_touch.c
++++ b/bsd/dev/sweet_touch.c
+@@ -573,22 +573,35 @@ touch_thread(void *arg, wait_result_t result)
+ 	printf("SWEET TOUCH: TLMM reset=%#x irq=%#x avdd=%#x\n",
+ 	    touch_rd(st.west, TOUCH_GPIO_IO(TOUCH_PIN_RESET)),
+ 	    touch_rd(st.west, TOUCH_GPIO_IO(TOUCH_PIN_IRQ)),
+ 	    touch_rd(st.south, TOUCH_GPIO_IO(TOUCH_PIN_AVDD)));
+-	/* TopazTouch touch.c: IRQ input, AVDD on, I2C pins, then the reset pulse. */
++	/* Match Spes ft3418_i2c: hold reset low before enabling either rail. */
+ 	touch_gpio(TOUCH_PIN_IRQ, 0, 3, 3, false, false);       /* CTL 0xc3 */
++	touch_gpio(TOUCH_PIN_RESET, 0, 3, 3, true, false);      /* asserted */
++	printf("SWEET TOUCH: reset asserted ctl=%#x io=%#x\n",
++	    touch_rd(st.west, TOUCH_GPIO_CFG(TOUCH_PIN_RESET)),
++	    touch_rd(st.west, TOUCH_GPIO_IO(TOUCH_PIN_RESET)));
+ 	touch_gpio(TOUCH_PIN_AVDD, 0, 3, 3, true, true);        /* CTL 0x2c3, high */
+ 	/* The Spes overlay maps vcc_i2c-supply to PM6125 L9A at 1.8 V. */
++	printf("SWEET TOUCH: enabling L9A 1.8V with reset held\n");
+ 	int power_error = sweet_rpmh_vreg_enable("ldoa9", 1800);
+ 	if (power_error) {
+ 		printf("SWEET TOUCH: Spes L9A vcc_i2c enable failed %d; probes skipped\n", power_error);
+ 		goto out;
+ 	}
++	printf("SWEET TOUCH: L9A enabled avdd-io=%#x\n",
++	    touch_rd(st.south, TOUCH_GPIO_IO(TOUCH_PIN_AVDD)));
+ 	touch_gpio(6, 1, 0, 0, false, false);                   /* qup2 SDA, CTL 0x4 */
+ 	touch_gpio(7, 1, 0, 0, false, false);                   /* qup2 SCL */
++	touch_wait(10); /* allow the switched rails to settle */
++	/* Linux fts_reset_proc(): 1 ms low pulse, then 200 ms boot settle. */
+ 	touch_gpio(TOUCH_PIN_RESET, 0, 3, 3, true, false);      /* CTL 0x2c3, low */
+-	touch_wait(20);
++	touch_wait(1);
+ 	touch_gpio(TOUCH_PIN_RESET, 0, 3, 3, true, true);
+-	touch_wait(250);
++	printf("SWEET TOUCH: reset released ctl=%#x io=%#x; waiting for controller\n",
++	    touch_rd(st.west, TOUCH_GPIO_CFG(TOUCH_PIN_RESET)),
++	    touch_rd(st.west, TOUCH_GPIO_IO(TOUCH_PIN_RESET)));
++	touch_wait(200);
+ 	uint8_t gid[32], legacy[32], fid1 = 0, fid2 = 0;
+ 	st.probing = true;
++	printf("SWEET TOUCH: probe sequence begin\n");
+ 	int ge = touch_probe_info(GOODIX_PID_REG, gid);
+@@ -452,7 +464,15 @@ touch_focaltech(void)
+ 	if (err) {
+ 		return err;
+ 	}
+-	unsigned n = buf[2] & 15u, active = 0;
++	unsigned n = buf[2] & 15u;
++	/* Spes/Topaz FT5452 firmware uses an all-FF frame for no contacts. */
++	if (n > TOUCH_MAX && buf[3] == 0xffu) {
++		if (st.active) {
++			printf("SWEET TOUCH: FT5452 idle frame; release all contacts\n");
++		}
++		touch_report(0, x, y);
++		return 0;
++	}
+ 	if ((buf[0] & 0x70u) || n > TOUCH_MAX) {
+ 		return EIO;
+ 	}
+@@ -468,6 +485,6 @@ touch_focaltech(void)
+ 		if (event == 1u) {
+ 			continue; /* UP record */
+ 		}
+ 		if (event == 3u) {
+-			return EIO;
++			continue; /* FT5452's unused/no-event slot */
+ 		}
+@@ -481,12 +498,8 @@ touch_focaltech(void)
+ 		}
+ 		mask |= 1u << id;
+ 		x[id] = (int)px;
+ 		y[id] = (int)py;
+-		++active;
+ 	}
+-	if (active != n) {
+-		return EIO;
+-	}
+ 	touch_report(mask, x, y);
+ 	return 0;
+ }

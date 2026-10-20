@@ -8,14 +8,15 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 
 REPO = "dinosaurrus/ios-spes-touch-fix"
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BASE = pathlib.Path(
     "/home/dino/İndirilenler/MIO-KITCHEN-4.2.1-linux/spesios16touch/"
-    "spes-touch-boot-fixed-touch-trace.img"
+    "spes-touch-boot-fixed-touch-khaje.img"
 )
-OUTPUT = BASE.with_name("spes-touch-boot-fixed-touch-khaje.img")
+OUTPUT = BASE.with_name("spes-touch-boot-fixed-touch-power-sequence.img")
 MKBOOTIMG = pathlib.Path("/usr/share/android-tools/mkbootimg/mkbootimg.py")
 
 
@@ -23,23 +24,45 @@ def run(args):
     subprocess.run([str(arg) for arg in args], check=True)
 
 
+def wait_for_success(run_id):
+    """Poll Actions state; tolerate transient API/network failures."""
+    while True:
+        result = subprocess.run(
+            ["gh", "run", "view", run_id, "-R", REPO,
+             "--json", "status,conclusion", "--jq", ".status + \" \" + (.conclusion // \"\")"],
+            text=True, capture_output=True,
+        )
+        if result.returncode == 0:
+            status, _, conclusion = result.stdout.strip().partition(" ")
+            print(f"Actions {run_id}: {status} {conclusion}".rstrip(), flush=True)
+            if status == "completed":
+                if conclusion != "success":
+                    raise RuntimeError(f"Actions run ended: {conclusion or 'unknown'}")
+                return
+        else:
+            print("Temporary GitHub API error; retrying in 15 seconds", flush=True)
+        time.sleep(15)
+
+
 def payload_info(kernel):
     magic = b"SWEETXNU"
-    positions = []
+    candidates = []
     start = 0
     while True:
         pos = kernel.find(magic, start)
         if pos < 0:
             break
-        positions.append(pos)
         start = pos + 1
-    if len(positions) != 1:
-        raise RuntimeError(f"expected one embedded SWEETXNU payload, found {len(positions)}")
-    pos = positions[0]
-    adt_off, adt_size = struct.unpack_from("<QQ", kernel, pos + 0x20)
-    cmdline = kernel[pos + 0x48 : pos + 0x48 + 608].split(b"\0", 1)[0].decode()
-    if not adt_off or not adt_size or pos + adt_off + adt_size > len(kernel):
-        raise RuntimeError("embedded ADT range is invalid")
+        if pos + 0x48 + 608 > len(kernel):
+            continue
+        adt_off, adt_size = struct.unpack_from("<QQ", kernel, pos + 0x20)
+        cmdline = kernel[pos + 0x48 : pos + 0x48 + 608].split(b"\0", 1)[0].decode(errors="replace")
+        if (adt_off >= 0x1000 and adt_size > 0 and
+                pos + adt_off + adt_size <= len(kernel) and cmdline):
+            candidates.append((pos, adt_off, adt_size, cmdline))
+    if len(candidates) != 1:
+        raise RuntimeError(f"expected one valid embedded SWEETXNU payload, found {len(candidates)}")
+    pos, adt_off, adt_size, cmdline = candidates[0]
     return pos, kernel[pos + adt_off : pos + adt_off + adt_size], cmdline
 
 
@@ -54,7 +77,7 @@ def main():
             raise SystemExit(f"required file not found: {path}")
 
     print(f"Waiting for successful macOS build {run_id}…", flush=True)
-    run(["gh", "run", "watch", run_id, "-R", REPO, "--exit-status"])
+    wait_for_success(run_id)
 
     with tempfile.TemporaryDirectory(prefix=f"spes-touch-{run_id}-") as td:
         work = pathlib.Path(td)
@@ -102,8 +125,9 @@ def main():
             raise RuntimeError("embedded Spes ADT was not preserved")
         if new_ramdisk != ramdisk.read_bytes():
             raise RuntimeError("original ramdisk changed")
-        required = (b"QUP0/SE2 clock init begin", b"QUP0/SE2 clock init ready",
-                    b"SE2 init ready")
+        required = (b"QUP0/SE2 clock init ready", b"SE2 init ready",
+                    b"reset asserted", b"L9A enabled", b"probe sequence begin",
+                    b"FT5452 idle frame; release all contacts")
         missing = [item.decode() for item in required if item not in new_kernel]
         if missing:
             raise RuntimeError(f"new touch stage markers missing: {missing}")
@@ -111,7 +135,7 @@ def main():
     digest = hashlib.sha256(OUTPUT.read_bytes()).hexdigest()
     print(f"Created: {OUTPUT}")
     print(f"SHA256:  {digest}")
-    print("Image checks: boot-v4, old shim prefix, Spes ADT, ramdisk and touch markers OK")
+    print("Image checks: boot-v4, preserved shim/ADT/ramdisk and Spes touch markers OK")
 
 
 if __name__ == "__main__":
