@@ -1,5 +1,14 @@
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
+## Agent handoff / active work (2026-10-20, newest)
+
+### >>> UPDATE 2026-10-20: Spes power and volume keys <<<
+- User reports the current Spes boot has no working power/volume keys. Compared Sweet’s existing read-only SPMI observer poller with active Spes Khaje DT/DTBO and SM6225 Linux drivers. The Spes keys are PM6125 PON SID0 (`PON RT 0x0810`: power bit0 and resin/volume-down bit1) plus PM6125 GPIO5 (`PPID 0xc4`, runtime `0xc410`, active-low volume-up).
+- Found two concrete omissions: patch 0082 gated all keys behind `sweethw=1` (unsafe for SM6225 because legacy Sweet uses SM7150 addresses), and patch 0088 started Spes touch only. The reused Sweet key driver also validated/read GPIO2 (`PPID 0x4c1`, `0xc110`), so it could not see Spes volume-up.
+- Added `0098-spes-sm6225-pmic-keys.patch`: selects the Spes SPMI arbiter windows from the active device tree (`core 0x1c40000`, `config 0x1c0a000`, `observer 0x1e00000`), uses GPIO5 status/config registers, preserves the PMIC read-only observer transport, and starts key polling alongside touch only when `sweetspes=1`. Legacy Sweet keeps its original mapping; USB remains gated.
+- Verified patch 0098 applies cleanly to the successful previous XNU build tree (Actions run `39484836281`). The package helper is set to base a new image on the latest aligned Spes candidate and write a distinct `spes-touch-boot-fixed-power-volume-keys.img`; it refuses to overwrite an existing output and checks for Spes key and touch code markers.
+- Build and package pending. A successful compile and embedded marker check will validate the artifact, but only a device trial can confirm the physical buttons deliver events.
+
 ## Agent handoff / active work (2026-10-15, latest)
 
 ### >>> UPDATE 2026-10-20: FT3418 report buffer alignment <<<<

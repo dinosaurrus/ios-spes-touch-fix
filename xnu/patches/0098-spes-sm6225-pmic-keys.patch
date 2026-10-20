@@ -1,0 +1,126 @@
+# Spes SM6225 keys: PM6125 PON + GPIO5 read-only SPMI observer polling
+# The active Khaje device tree maps power/volume-down to PON SID0 and volume-up
+# to PM6125 GPIO5. Select SM6225 arbiter mappings only under sweetspes=1.
+--- a/bsd/dev/sweet_keys.c
++++ b/bsd/dev/sweet_keys.c
+@@ -1,8 +1,8 @@
+ /*
+- * Minimal polled SWEET keys. Call once after the scheduler is running.
+- * See hw-report.md: volume-up is PM6150L SID 4, NOT PM6150 SID 0.
+- * PMIC access is READ ONLY: the sole MMIO write issues EXT_READL on an
+- * observer channel. No PMIC config, IRQ acknowledge or reset writes exist.
++ * Polled SWEET input keys. Call after the scheduler starts.
++ * Legacy Sweet uses SM7150 PMIC addresses; Spes selects PM6125 below.
++ * PMIC access is read-only: MMIO writes issue SPMI EXT_READL observer
++ * commands and never modify PMIC configuration or acknowledge interrupts.
+  */
+ #if defined(ARM64_BOARD_CONFIG_SWEET)
+ #include <sys/param.h>
+@@ -22,11 +22,15 @@
+ #define KEYS_CNFG_PA     0x0c40a000u
+ #define KEYS_PON_RT      0x0810u
+ #define KEYS_GPIO_RT     0xc110u
++#define SPES_KEYS_CORE_PA 0x01c40000u
++#define SPES_KEYS_OBS_PA  0x01e00000u
++#define SPES_KEYS_CNFG_PA 0x01c0a000u
++#define SPES_KEYS_GPIO_RT 0xc410u /* PM6125 GPIO5 runtime status */
+ #define KEYS_NO_APID     0xffffu
+ 
+ static vm_offset_t keys_core, keys_obs, keys_cnfg;
+ static uint16_t keys_pon_apid = KEYS_NO_APID, keys_gpio_apid = KEYS_NO_APID;
+-static uint32_t keys_version, keys_last_status;
++static uint32_t keys_version, keys_last_status, keys_gpio_rt = KEYS_GPIO_RT;
+ static bool keys_started;
+ static int keys_sleep_chan;
+ 
+@@ -100,7 +104,7 @@
+ 	for (;;) {
+ 		uint8_t pon = 0, gpio = 0;
+ 		bool pok = keys_read(keys_pon_apid, KEYS_PON_RT, &pon);
+-		bool gok = keys_read(keys_gpio_apid, KEYS_GPIO_RT, &gpio);
++		bool gok = keys_read(keys_gpio_apid, keys_gpio_rt, &gpio);
+ 		int now[3] = {!!(pon & 1u), !(gpio & 1u), !!(pon & 2u)};
+ 		if (!pok || !gok) {
+ 			if ((errors++ % 250u) == 0) {
+@@ -113,7 +117,7 @@
+ 		for (int k = 0; k < 3; ++k) {
+ 			if ((k == 1 ? gok : pok) && now[k] != state[k]) {
+ 				state[k] = now[k];
+-				printf("SWEET KEYS: key=%d down=%d pon=%#x gpio4:c110=%#x\n",
++				printf("SWEET KEYS: key=%d down=%d pon=%#x gpio=%#x\n",
+ 				    k, state[k], pon, gpio);
+ 				sweet_hid_key(k, state[k]);
+ 			}
+@@ -126,19 +130,29 @@
+ sweet_keys_init(void)
+ {
+ 	int enabled = 1;
++	int spes = 0;
+ 	thread_t thread;
+ 	if (keys_started) {
+ 		return;
+ 	}
+ 	keys_started = true;
+ 	(void)PE_parse_boot_argn("sweetkeys", &enabled, sizeof(enabled));
++	(void)PE_parse_boot_argn("sweetspes", &spes, sizeof(spes));
+ 	if (!enabled) {
+ 		printf("SWEET KEYS: disabled (sweetkeys=0)\n");
+ 		return;
+ 	}
+-	keys_core = ml_io_map(KEYS_CORE_PA, 0x2000);
+-	keys_cnfg = ml_io_map(KEYS_CNFG_PA, 0x1000);
+-	keys_obs = ml_io_map(KEYS_OBS_PA, 0x10000);
++	if (spes == 1) {
++		/* SM6225 PMIC arbiter bases from the active Khaje DTB. */
++		keys_core = ml_io_map(SPES_KEYS_CORE_PA, 0x1100);
++		keys_cnfg = ml_io_map(SPES_KEYS_CNFG_PA, 0x26000);
++		keys_obs = ml_io_map(SPES_KEYS_OBS_PA, 0x10000);
++		keys_gpio_rt = SPES_KEYS_GPIO_RT;
++	} else {
++		keys_core = ml_io_map(KEYS_CORE_PA, 0x2000);
++		keys_cnfg = ml_io_map(KEYS_CNFG_PA, 0x1000);
++		keys_obs = ml_io_map(KEYS_OBS_PA, 0x10000);
++	}
+ 	if (!keys_core || !keys_cnfg || !keys_obs) {
+ 		printf("SWEET KEYS: MMIO mapping failed\n");
+ 		return;
+@@ -152,21 +166,23 @@
+ 		return;
+ 	}
+ 	keys_pon_apid = keys_find_apid(0x008, count);
+-	keys_gpio_apid = keys_find_apid(0x4c1, count);
++	/* PM6125 GPIO5 is PPID 0xc4 on Spes; legacy Sweet uses SID4/GPIO2. */
++	keys_gpio_apid = keys_find_apid(spes == 1 ? 0x0c4 : 0x4c1, count);
+ 	uint8_t pon = 0, gpio = 0, mode = 0, en = 0, subtype = 0;
+ 	bool pok = keys_read(keys_pon_apid, KEYS_PON_RT, &pon);
+-	bool gok = keys_read(keys_gpio_apid, KEYS_GPIO_RT, &gpio);
+-	bool mok = keys_read(keys_gpio_apid, 0xc140, &mode);
+-	bool eok = keys_read(keys_gpio_apid, 0xc146, &en);
+-	bool sok = keys_read(keys_gpio_apid, 0xc105, &subtype);
+-	printf("SWEET KEYS: arb=%#x apids=%u pon-apid=%u gpio4-apid=%u pon=%#x/%d gpio=%#x/%d mode=%#x/%d en=%#x/%d subtype=%#x/%d\n",
++	bool gok = keys_read(keys_gpio_apid, keys_gpio_rt, &gpio);
++	bool mok = keys_read(keys_gpio_apid, spes == 1 ? 0xc540 : 0xc140, &mode);
++	bool eok = keys_read(keys_gpio_apid, spes == 1 ? 0xc546 : 0xc146, &en);
++	bool sok = keys_read(keys_gpio_apid, spes == 1 ? 0xc505 : 0xc105, &subtype);
++	printf("SWEET KEYS: target=%s arb=%#x apids=%u pon-apid=%u gpio-apid=%u pon=%#x/%d gpio@%#x=%#x/%d mode=%#x/%d en=%#x/%d subtype=%#x/%d\n",
++	    spes == 1 ? "Spes-PM6125" : "Sweet-PM6150L",
+ 	    keys_version, count, keys_pon_apid, keys_gpio_apid,
+-	    pon, pok, gpio, gok, mode, mok, en, eok, subtype, sok);
++	    pon, pok, keys_gpio_rt, gpio, gok, mode, mok, en, eok, subtype, sok);
+ 	/* GPIO configuration belongs to firmware. Diagnose, never repair it here. */
+ 	unsigned dir = subtype >= 0x10u && subtype <= 0x13u ?
+ 	    mode & 3u : (mode >> 4) & 7u;
+ 	if (!eok || !mok || !sok || !(en & 0x80u) || (dir != 0 && dir != 2)) {
+-		printf("SWEET KEYS: GPIO2 not confirmed enabled as input; volume-up withheld, PMIC unchanged\n");
++		printf("SWEET KEYS: GPIO input not confirmed (pin=%u); volume-up withheld, PMIC unchanged\n", spes == 1 ? 5u : 2u);
+ 		keys_gpio_apid = KEYS_NO_APID;
+ 	}
+ 	if (!pok && !gok) {
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -677,4 +677,5 @@ sweet_ufs_init(void)
+ 	(void)PE_parse_boot_argn("sweetspes", &spes, sizeof(spes));
+ 	if (spes == 1) {
++		sweet_keys_init();
+ 		sweet_touch_init();
+ 	}
