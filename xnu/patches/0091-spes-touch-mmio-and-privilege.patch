@@ -1,7 +1,7 @@
 diff --git a/bsd/dev/sweet_touch.c b/bsd/dev/sweet_touch.c
 --- a/bsd/dev/sweet_touch.c
 +++ b/bsd/dev/sweet_touch.c
-@@ -559,10 +559,29 @@
+@@ -559,13 +559,34 @@
  	touch_wait(delay_s * 1000u);
  	printf("SWEET TOUCH: mapping GCC/TLMM/SE2\n");
 +	printf("SWEET TOUCH: map GCC pa=%#x size=%#x begin\n", TOUCH_GCC_PA, 0x80000);
@@ -40,7 +40,7 @@ diff --git a/bsd/dev/sweet_touch.c b/bsd/dev/sweet_touch.c
 diff --git a/bsd/kern/sweet_amfi.c b/bsd/kern/sweet_amfi.c
 --- a/bsd/kern/sweet_amfi.c
 +++ b/bsd/kern/sweet_amfi.c
-@@ -336,6 +336,17 @@
+@@ -336,6 +336,13 @@
  	}
  	char name[20];
  	proc_selfname(name, sizeof(name));
@@ -54,4 +54,3 @@ diff --git a/bsd/kern/sweet_amfi.c b/bsd/kern/sweet_amfi.c
  	for (int i = 0; i < sweet_priv_logged_count; i++) {
  		if (sweet_priv_logged[i].priv == priv &&
  		    strncmp(sweet_priv_logged[i].name, name, sizeof(name)) == 0) {
-*** End Patch
