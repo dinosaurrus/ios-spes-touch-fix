@@ -1,0 +1,57 @@
+diff --git a/bsd/dev/sweet_touch.c b/bsd/dev/sweet_touch.c
+--- a/bsd/dev/sweet_touch.c
++++ b/bsd/dev/sweet_touch.c
+@@ -559,10 +559,29 @@
+ 	touch_wait(delay_s * 1000u);
+ 	printf("SWEET TOUCH: mapping GCC/TLMM/SE2\n");
++	printf("SWEET TOUCH: map GCC pa=%#x size=%#x begin\n", TOUCH_GCC_PA, 0x80000);
+ 	st.gcc = ml_io_map(TOUCH_GCC_PA, 0x80000);
++	printf("SWEET TOUCH: map GCC returned va=%#lx\n", (unsigned long)st.gcc);
++	if (!st.gcc) {
++		printf("SWEET TOUCH: map GCC failed\n");
++		goto out;
++	}
++	printf("SWEET TOUCH: map TLMM-WEST pa=%#x size=%#x begin\n", TOUCH_WEST_PA, 0x58000);
+ 	st.west = ml_io_map(TOUCH_WEST_PA, 0x58000);
++	printf("SWEET TOUCH: map TLMM-WEST returned va=%#lx\n", (unsigned long)st.west);
++	if (!st.west) {
++		printf("SWEET TOUCH: map TLMM-WEST failed\n");
++		goto out;
++	}
++	printf("SWEET TOUCH: map TLMM-SOUTH pa=%#x size=%#x begin\n", TOUCH_SOUTH_PA, 0x70000);
+ 	st.south = ml_io_map(TOUCH_SOUTH_PA, 0x70000);
++	printf("SWEET TOUCH: map TLMM-SOUTH returned va=%#lx\n", (unsigned long)st.south);
++	if (!st.south) {
++		printf("SWEET TOUCH: map TLMM-SOUTH failed\n");
++		goto out;
++	}
++	printf("SWEET TOUCH: map SE2 pa=%#x size=%#x begin\n", TOUCH_SE_PA, 0x4000);
+ 	st.se = ml_io_map(TOUCH_SE_PA, 0x4000);
+-	if (!st.gcc || !st.west || !st.south || !st.se) {
++	printf("SWEET TOUCH: map SE2 returned va=%#lx\n", (unsigned long)st.se);
++	if (!st.se) {
+ 		printf("SWEET TOUCH: MMIO mapping failed\n");
+ 		goto out;
+ 	}
++	printf("SWEET TOUCH: all MMIO mappings ready\n");
+ 	if (!touch_clocks() || !touch_se_init()) {
+ 		goto out;
+ 	}
+diff --git a/bsd/kern/sweet_amfi.c b/bsd/kern/sweet_amfi.c
+--- a/bsd/kern/sweet_amfi.c
++++ b/bsd/kern/sweet_amfi.c
+@@ -336,6 +336,17 @@
+ 	}
+ 	char name[20];
+ 	proc_selfname(name, sizeof(name));
++	/* These exact system daemons use the matching Skywalk/network APIs. */
++	if ((priv == PRIV_SKYWALK_REGISTER_USER_PIPE &&
++	    strncmp(name, "identityservicesd", sizeof(name)) == 0) ||
++	    (priv == PRIV_NET_PRIVILEGED_SOCKET_DELEGATE &&
++	    strncmp(name, "dasd", sizeof(name)) == 0)) {
++		return 0;
++	}
+ 	for (int i = 0; i < sweet_priv_logged_count; i++) {
+ 		if (sweet_priv_logged[i].priv == priv &&
+ 		    strncmp(sweet_priv_logged[i].name, name, sizeof(name)) == 0) {
+*** End Patch
