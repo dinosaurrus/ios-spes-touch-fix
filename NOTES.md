@@ -2,6 +2,11 @@
 
 ## Agent handoff / active work (2026-10-15, latest)
 
+### >>> UPDATE 2026-10-20: Spes FT3418 report pointer <<<<
+- User tested `spes-touch-boot-fixed-touch-rpm-smd-safe.img`: it boots, but touch input is absent. This is new hardware feedback; touch is not fixed yet.
+- Compared XNU's FocalTech report read with the device's active SM6225 `ft3418_i2c/focaltech_core.c`. Linux sets the report register pointer to `0x01` before reading the 63-byte touch frame; XNU was reading from `0x00`, shifting the whole frame by one byte. This explains why a probed controller could still yield unusable touch frames. This register mismatch is source-confirmed; it has not yet been validated on the phone.
+- Added patch `0096-spes-ft3418-report-register.patch` to read frame reports from `0x01` and log the first contact coordinates. Build packaging now starts from the tested RPM-SMD-safe image and emits a new distinct `spes-touch-boot-fixed-touch-ft3418-reg1.img`, preserving its shim/ADT/ramdisk. Next: verify patch order/build, package CI output, and ask user to `fastboot boot` the candidate; do not claim physical touch success until tested.
+
 ### >>> UPDATE 2026-10-20: RPM-SMD vs RPMh stall <<<
 
 - Latest user photo reaches `SWEET TOUCH: enabling L9A 1.8V with reset held` and then stops; a later `kernel_task privilege 10001 denied` appears in the networking/utun log stream. The denial is not evidence that the touch worker failed.
