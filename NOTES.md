@@ -2,6 +2,12 @@
 
 ## Agent handoff / active work (2026-10-20, newest)
 
+### >>> UPDATE 2026-10-20: Spes key probe still has no result line <<<
+- User tested the APID-count image and supplied a photo showing `version read returned=0x50010000` and `APID map scan count=512`, followed by ordinary kernel initialization; the log contains no `target=Spes-PM6125`/APID result or key event. This confirms the corrected version read and bounded table selection are reached, but does not identify whether the map scan or an observer transaction is the remaining blocker.
+- Rechecked Linux `spmi-pmic-arb.c` and Khaje DT: v5 APID map begins at core+0x900, ownership at config+0x700, observer channels at `0x10000*EE + 0x80*APID`; the configured core length 0x1100 yields 512 entries. Linux's v5 command formatter intentionally sends the low 8-bit register offset because the APID channel already selects the peripheral. The current local source matches these facts.
+- Added `0101-spes-key-apid-probe-trace.patch`: progress every 64 APID entries (with a short yield), matching PPID/APID/owner reports, scan completion reports, and start/result logs for the first PON and GPIO observer reads. This preserves the read-only PMIC behavior and should locate the exact remaining failure on the next device boot.
+- Packaging helper now uses the tested APID-count image as its base and targets the unique `spes-touch-boot-fixed-power-volume-keys-apid-trace.img`; existing boot images are preserved. Patch dry-run passed against the exact CI-extracted source from run 39493214616. New public CI build and image package are pending.
+
 ### >>> UPDATE 2026-10-20: APID map count correction <<<
 - New user photo from the async probe candidate shows all three PMIC arbiter windows map, then prints `SWEET TOUCH: starting in 45 s`; there is no version/APID summary yet. The async worker has not reported completion, while the UFS startup thread continues.
 - Compared XNU’s APID-count read with `/home/dino/ios-spes/kernel/sm6225/drivers/spmi/spmi-pmic-arb.c`: register `core+0x4` is `PMIC_ARB_INT_EN`, not an APID count. Linux determines the V5 table bound from `core_size` and scans offsets `0x900 + 4*n`. The old Spes poller incorrectly interpreted INT_EN bits as the number of APID entries.

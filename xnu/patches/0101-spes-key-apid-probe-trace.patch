@@ -1,0 +1,51 @@
+# Trace the APID search and the first PMIC observer reads on Spes.
+# Yield periodically during the 512-entry MMIO scan so startup work can run.
+--- a/bsd/dev/sweet_keys.c
++++ b/bsd/dev/sweet_keys.c
+@@ -49,16 +49,25 @@
+ keys_find_apid(uint16_t ppid, uint32_t count)
+ {
+ 	uint16_t found = KEYS_NO_APID;
++	printf("SWEET KEYS: APID scan begin ppid=%#x count=%u\n", ppid, count);
+ 	for (uint32_t i = 0; i < count; ++i) {
+ 		uint32_t map = keys_rd(keys_core, 0x900u + 4u * i);
++		if ((i & 63u) == 63u) {
++			printf("SWEET KEYS: APID scan ppid=%#x index=%u map=%#x\n",
++			    ppid, i, map);
++			delay(1);
++		}
+ 		if (map == 0 || ((map >> 8) & 0xfffu) != ppid) {
+ 			continue;
+ 		}
+ 		uint32_t owner = keys_rd(keys_cnfg, 0x700u + 4u * i) & 7u;
++		printf("SWEET KEYS: APID match ppid=%#x apid=%u map=%#x owner=%u\n",
++		    ppid, i, map, owner);
+ 		if (found == KEYS_NO_APID || owner == 0) {
+ 			found = (uint16_t)i;
+ 		}
+ 	}
++	printf("SWEET KEYS: APID scan done ppid=%#x apid=%u\n", ppid, found);
+ 	return found;
+ }
+ 
+@@ -179,9 +188,19 @@
+ 	keys_pon_apid = keys_find_apid(0x008, count);
+ 	/* PM6125 GPIO5 is PPID 0xc4 on Spes; legacy Sweet uses SID4/GPIO2. */
+ 	keys_gpio_apid = keys_find_apid(spes == 1 ? 0x0c4 : 0x4c1, count);
++	printf("SWEET KEYS: APID results pon=%u gpio=%u\n",
++	    keys_pon_apid, keys_gpio_apid);
+ 	uint8_t pon = 0, gpio = 0, mode = 0, en = 0, subtype = 0;
++	printf("SWEET KEYS: PON read begin apid=%u addr=%#x\n",
++	    keys_pon_apid, KEYS_PON_RT);
+ 	bool pok = keys_read(keys_pon_apid, KEYS_PON_RT, &pon);
++	printf("SWEET KEYS: PON read done ok=%d value=%#x status=%#x\n",
++	    pok, pon, keys_last_status);
++	printf("SWEET KEYS: GPIO status read begin apid=%u addr=%#x\n",
++	    keys_gpio_apid, keys_gpio_rt);
+ 	bool gok = keys_read(keys_gpio_apid, keys_gpio_rt, &gpio);
++	printf("SWEET KEYS: GPIO status read done ok=%d value=%#x status=%#x\n",
++	    gok, gpio, keys_last_status);
+ 	bool mok = keys_read(keys_gpio_apid, spes == 1 ? 0xc540 : 0xc140, &mode);
+ 	bool eok = keys_read(keys_gpio_apid, spes == 1 ? 0xc546 : 0xc146, &en);
+ 	bool sok = keys_read(keys_gpio_apid, spes == 1 ? 0xc505 : 0xc105, &subtype);
+

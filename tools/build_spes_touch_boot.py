@@ -14,9 +14,9 @@ REPO = "dinosaurrus/ios-spes-touch-fix"
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BASE = pathlib.Path(
     "/home/dino/İndirilenler/MIO-KITCHEN-4.2.1-linux/spesios16touch/"
-    "spes-touch-boot-fixed-power-volume-keys-async.img"
+    "spes-touch-boot-fixed-power-volume-keys-apid.img"
 )
-OUTPUT = BASE.with_name("spes-touch-boot-fixed-power-volume-keys-apid.img")
+OUTPUT = BASE.with_name("spes-touch-boot-fixed-power-volume-keys-apid-trace.img")
 MKBOOTIMG = pathlib.Path("/usr/share/android-tools/mkbootimg/mkbootimg.py")
 
 
@@ -133,6 +133,8 @@ def main():
                     b"SWEET KEYS: target=", b"Spes-PM6125",
                     b"SWEET KEYS: async init queued", b"SWEET KEYS: probe begin",
                     b"SWEET KEYS: APID map scan count=",
+                    b"SWEET KEYS: APID scan begin",
+                    b"SWEET KEYS: PON read begin",
                     b"SWEET KEYS: key=")
         missing = [item.decode() for item in required if item not in new_kernel]
         if missing:
