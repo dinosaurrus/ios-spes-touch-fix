@@ -2,6 +2,12 @@
 
 ## Agent handoff / active work (2026-10-15, latest)
 
+### >>> UPDATE 2026-10-20: FT3418 report buffer alignment <<<<
+- User reports the latest boot reaches iOS but the touchscreen still produces no input. The `ios16-root-20H392.simg` inventory includes `IOHIDFamily.kext`, HID service/filter plugins, `com.apple.backboardd.plist`, and BackBoard HID frameworks; the userland HID chain is present, so changing this root image is not supported by the current evidence.
+- Found the missing Spes touch bug by comparing XNU against `/home/dino/ios-spes/kernel/sm6225/drivers/input/touchscreen/ft3418_i2c/focaltech_core.c`: Linux initializes `buf[0]=0x01`, then reads the report starting into `buf+1`, preserving parser indices (point count at 2, first record at 3). Patch 0096 changed the I2C register pointer to `0x01` but read into `buf`, leaving the whole report one byte out of alignment. This explains the no-touch result when the controller responds.
+- Added patch `0097-spes-ft3418-report-buffer-alignment.patch`: keep byte 0 as the register pointer and read 62 report bytes into `buf+1`; first-contact diagnostic now marks `report-frame-aligned`. Patch sequence 0096→0097 was applied to the CI-extracted source successfully. The packaging script now targets a new, separate `spes-touch-boot-fixed-touch-ft3418-aligned.img`; earlier images remain intact.
+- **Power limitation remains:** Spes PM6125 L9A is exposed through RPM-SMD. The current boot image logs `L9A uses RPM-SMD; preserving firmware rail state` and does not issue the regulator request. If the I2C probe still times out, this separate kernel-side rail transport must be implemented; a rootfs edit cannot substitute for that. Do not claim touch is guaranteed until the phone registers a first contact and actual UI input is confirmed.
+
 ### >>> UPDATE 2026-10-20: Spes FT3418 report pointer <<<<
 - User tested `spes-touch-boot-fixed-touch-rpm-smd-safe.img`: it boots, but touch input is absent. This is new hardware feedback; touch is not fixed yet.
 - Compared XNU's FocalTech report read with the device's active SM6225 `ft3418_i2c/focaltech_core.c`. Linux sets the report register pointer to `0x01` before reading the 63-byte touch frame; XNU was reading from `0x00`, shifting the whole frame by one byte. This explains why a probed controller could still yield unusable touch frames. This register mismatch is source-confirmed; it has not yet been validated on the phone.

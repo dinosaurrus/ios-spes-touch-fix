@@ -16,7 +16,7 @@ BASE = pathlib.Path(
     "/home/dino/İndirilenler/MIO-KITCHEN-4.2.1-linux/spesios16touch/"
     "spes-touch-boot-fixed-touch-rpm-smd-safe.img"
 )
-OUTPUT = BASE.with_name("spes-touch-boot-fixed-touch-ft3418-reg1.img")
+OUTPUT = BASE.with_name("spes-touch-boot-fixed-touch-ft3418-aligned.img")
 MKBOOTIMG = pathlib.Path("/usr/share/android-tools/mkbootimg/mkbootimg.py")
 
 
@@ -127,7 +127,7 @@ def main():
             raise RuntimeError("original ramdisk changed")
         required = (b"QUP0/SE2 clock init ready", b"SE2 init ready",
                     b"reset asserted", b"L9A uses RPM-SMD",
-                    b"FT3418 first contact",
+                    b"FT3418 first contact", b"report-frame-aligned",
                     b"probe sequence begin",
                     b"FT5452 idle frame; release all contacts")
         missing = [item.decode() for item in required if item not in new_kernel]
