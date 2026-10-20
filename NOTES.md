@@ -2,6 +2,13 @@
 
 ## Agent handoff / active work (2026-10-15, latest)
 
+### >>> UPDATE 2026-10-20: RPM-SMD vs RPMh stall <<<
+
+- Latest user photo reaches `SWEET TOUCH: enabling L9A 1.8V with reset held` and then stops; a later `kernel_task privilege 10001 denied` appears in the networking/utun log stream. The denial is not evidence that the touch worker failed.
+- Inspected vendor DTB #08 (Khaje) and overlay 06 plus local SM6225 Linux regulator sources. The active Khaje DT describes PM6125 supplies with `qcom,rpm-smd-regulator`; it does not expose a `qcom,rpmh-rsc` node. The XNU direct-RPMh helper in patch 0062 uses hardcoded RSC/TCS/CMD-DB addresses copied from Sweet, so the L9A request is an invalid transport for Spes and explains the stall boundary.
+- Added patch 0095 to remove that direct RPMh request and log that Spes L9A is RPM-SMD-managed, preserving the boot firmware's rail state while allowing reset/SE2 probing to proceed. Updated the image packager to use the last tested power-sequence image as its base and require the RPM-SMD-safe marker. This avoids the observed hang, but touch operation still requires a real-device probe; XNU does not yet implement the Khaje RPM-SMD request transport.
+- Source check: Topaz is a useful same-family clock/FT5452 reference, but its own touch bring-up is unconfirmed and its rail handling is not proof for Spes. Do not claim this candidate guarantees working touch until hardware input is observed.
+
 ### >>> UPDATE 2026-10-19: Redmi Note 11 spes port <<<
 
 - User target is Redmi Note 11 `spes`; stock boot/vendor_boot/dtbo/vbmeta images are in ignored `backup/` (do not add them to git). `vendor_boot.img` contains the base DTB and vendor ramdisk. Extracted `/vendor_boot` DTB set is in ignored `dtb/vendor_boot_unpacked/`; DTBO overlays are in `dtb/dtbo_unpacked/`. Overlay 06 identifies `SPES KHAJE IDP nopmi`, compatible `qcom,khaje-idp`, SoC id 0x206; base DTB #08 is Khaje. This is a hardware observation from the supplied images.

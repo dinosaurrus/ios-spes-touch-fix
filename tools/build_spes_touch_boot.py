@@ -14,9 +14,9 @@ REPO = "dinosaurrus/ios-spes-touch-fix"
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BASE = pathlib.Path(
     "/home/dino/İndirilenler/MIO-KITCHEN-4.2.1-linux/spesios16touch/"
-    "spes-touch-boot-fixed-touch-khaje.img"
+    "spes-touch-boot-fixed-touch-power-sequence.img"
 )
-OUTPUT = BASE.with_name("spes-touch-boot-fixed-touch-power-sequence.img")
+OUTPUT = BASE.with_name("spes-touch-boot-fixed-touch-rpm-smd-safe.img")
 MKBOOTIMG = pathlib.Path("/usr/share/android-tools/mkbootimg/mkbootimg.py")
 
 
@@ -126,7 +126,8 @@ def main():
         if new_ramdisk != ramdisk.read_bytes():
             raise RuntimeError("original ramdisk changed")
         required = (b"QUP0/SE2 clock init ready", b"SE2 init ready",
-                    b"reset asserted", b"L9A enabled", b"probe sequence begin",
+                    b"reset asserted", b"L9A uses RPM-SMD",
+                    b"probe sequence begin",
                     b"FT5452 idle frame; release all contacts")
         missing = [item.decode() for item in required if item not in new_kernel]
         if missing:
