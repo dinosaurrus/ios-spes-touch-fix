@@ -1,0 +1,89 @@
+# Run PMIC probing on a worker so SPMI setup cannot block UFS/startup.
+# Include boundary logs around each Spes arbiter mapping for the next device trace.
+--- a/bsd/dev/sweet_keys.c
++++ b/bsd/dev/sweet_keys.c
+@@ -31,6 +31,7 @@
+ static vm_offset_t keys_core, keys_obs, keys_cnfg;
+ static uint16_t keys_pon_apid = KEYS_NO_APID, keys_gpio_apid = KEYS_NO_APID;
+ static uint32_t keys_version, keys_last_status, keys_gpio_rt = KEYS_GPIO_RT;
++static int keys_spes;
+ static bool keys_started;
+ static int keys_sleep_chan;
+ 
+@@ -126,27 +127,26 @@
+ 	}
+ }
+ 
+-void
+-sweet_keys_init(void)
+-{
+-	int enabled = 1;
+-	int spes = 0;
++static void
++keys_setup_thread(void *arg, wait_result_t result)
++{
++	int spes = keys_spes;
+ 	thread_t thread;
+-	if (keys_started) {
+-		return;
+-	}
+-	keys_started = true;
+-	(void)PE_parse_boot_argn("sweetkeys", &enabled, sizeof(enabled));
+-	(void)PE_parse_boot_argn("sweetspes", &spes, sizeof(spes));
+-	if (!enabled) {
+-		printf("SWEET KEYS: disabled (sweetkeys=0)\n");
+-		return;
+-	}
++	(void)arg;
++	(void)result;
++	printf("SWEET KEYS: probe begin target=%s\n",
++	    spes == 1 ? "Spes-PM6125" : "Sweet-PM6150L");
+ 	if (spes == 1) {
+ 		/* SM6225 PMIC arbiter bases from the active Khaje DTB. */
++		printf("SWEET KEYS: map begin core pa=%#x\n", SPES_KEYS_CORE_PA);
+ 		keys_core = ml_io_map(SPES_KEYS_CORE_PA, 0x1100);
++		printf("SWEET KEYS: map core returned va=%p\n", (void *)keys_core);
++		printf("SWEET KEYS: map begin config pa=%#x\n", SPES_KEYS_CNFG_PA);
+ 		keys_cnfg = ml_io_map(SPES_KEYS_CNFG_PA, 0x26000);
++		printf("SWEET KEYS: map config returned va=%p\n", (void *)keys_cnfg);
++		printf("SWEET KEYS: map begin observer pa=%#x\n", SPES_KEYS_OBS_PA);
+ 		keys_obs = ml_io_map(SPES_KEYS_OBS_PA, 0x10000);
++		printf("SWEET KEYS: map observer returned va=%p\n", (void *)keys_obs);
+ 		keys_gpio_rt = SPES_KEYS_GPIO_RT;
+ 	} else {
+ 		keys_core = ml_io_map(KEYS_CORE_PA, 0x2000);
+@@ -192,7 +192,33 @@
+ 	if (kr == KERN_SUCCESS) {
+ 		thread_deallocate(thread);
+ 	} else {
+-		printf("SWEET KEYS: kernel_thread_start failed %d\n", kr);
++		printf("SWEET KEYS: poll thread start failed %d\n", kr);
++	}
++}
++
++void
++sweet_keys_init(void)
++{
++	int enabled = 1, spes = 0;
++	thread_t thread;
++	if (keys_started) {
++		return;
++	}
++	keys_started = true;
++	(void)PE_parse_boot_argn("sweetkeys", &enabled, sizeof(enabled));
++	(void)PE_parse_boot_argn("sweetspes", &spes, sizeof(spes));
++	if (!enabled) {
++		printf("SWEET KEYS: disabled (sweetkeys=0)\n");
++		return;
++	}
++	keys_spes = spes;
++	printf("SWEET KEYS: async init queued target=%s\n",
++	    spes == 1 ? "Spes-PM6125" : "Sweet-PM6150L");
++	kern_return_t kr = kernel_thread_start(keys_setup_thread, NULL, &thread);
++	if (kr == KERN_SUCCESS) {
++		thread_deallocate(thread);
++	} else {
++		printf("SWEET KEYS: setup thread start failed %d\n", kr);
+ 	}
+ }
+ #endif /* ARM64_BOARD_CONFIG_SWEET */

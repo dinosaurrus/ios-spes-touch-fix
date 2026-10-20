@@ -2,6 +2,12 @@
 
 ## Agent handoff / active work (2026-10-20, newest)
 
+### >>> UPDATE 2026-10-20: key-probe startup stall report <<<
+- User tested the key-enabled image and supplied a photo ending at `dll_init: All the created dll kernel threads have been scheduled...`. The visible HID “buttons registered” line only registers the HID service; it does not prove the PMIC poller ran. The image payload command line was independently unpacked and contains `sweetspes=1`. No `SWEET KEYS: target=...` or Spes `SWEET TOUCH: mapping...` startup diagnostics are visible in the photo.
+- Likely cause: patch 0098 runs SPMI setup synchronously inside `sweet_ufs_init`, before invoking touch. The screen alone cannot prove the exact blocking instruction, but the call order could stall startup and prevent touch init if the arbiter read/mapping is slow.
+- Added `0099-spes-async-key-probe.patch`: UFS startup now queues a separate key setup thread and returns; the worker performs the existing PM6125 GPIO5/PON observer reads and starts polling. It prints queued/probe markers and begin/return markers around all three Spes MMIO mappings so the next log can pinpoint a remaining stall. Patch dry-run succeeds against the post-0098 source.
+- Package helper now uses the same tested key image as its base and targets a new `spes-touch-boot-fixed-power-volume-keys-async.img`; prior output is preserved. Build and image validation pending.
+
 ### >>> UPDATE 2026-10-20: Spes power and volume keys <<<
 - User reports the current Spes boot has no working power/volume keys. Compared Sweet’s existing read-only SPMI observer poller with active Spes Khaje DT/DTBO and SM6225 Linux drivers. The Spes keys are PM6125 PON SID0 (`PON RT 0x0810`: power bit0 and resin/volume-down bit1) plus PM6125 GPIO5 (`PPID 0xc4`, runtime `0xc410`, active-low volume-up).
 - Found two concrete omissions: patch 0082 gated all keys behind `sweethw=1` (unsafe for SM6225 because legacy Sweet uses SM7150 addresses), and patch 0088 started Spes touch only. The reused Sweet key driver also validated/read GPIO2 (`PPID 0x4c1`, `0xc110`), so it could not see Spes volume-up.
