@@ -1,5 +1,14 @@
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
+## Agent handoff / active work (2026-10-21, newest)
+
+### >>> UPDATE 2026-10-21: Setup/wallpaper root copy and GPU/touch findings <<<
+- User requested Setup Assistant skip, wallpaper, Adreno GPU and a real touchscreen fix on `ios16-root-20H392-spes-fixed.simg`, paired with the tested v2 Spes boot image. Original root `.simg`/`.img` were left untouched. Created `/home/dino/ios-spes/ios-sweet/research/ios16-root-20H392-spes-fixed-setup-wallpaper.img` and sparse package `.simg`; `fsck.hfsplus -q` reported clean before sparse conversion. SHA256 raw `48bd0ab454f04b166a658efd4eeac8f9245e603ebbf326c8c9f6a5ae8b1ee48f`, sparse `5e6a1f7c2a34bc730ae10652fc0e3e85efe30298774c87534a42d7c96f41c1cf`.
+- Root copy sets PurpleBuddy `SetupDone`, `SetupFinishedAllSteps`, `SetupVersion=11`, disables mini-buddy and cloud-configuration prompts, and adds static 1080x2400 CPBitmap Home/Lock wallpaper plus PNG/JPEG copies/previews. Wallpaper files and prefs are staged, but iOS 16 PosterBoard/system behavior and Setup skip are not phone-confirmed; activation and first boot may still create required Data/System state.
+- User-tested boot candidate associated with this root: `/home/dino/İndirilenler/MIO-KITCHEN-4.2.1-linux/spesios16touch/spes-touch-boot-fixed-power-volume-keys-observer-fixed-v2.img`, SHA256 `3b9849d095721a62a90bf8456871458ebc5e39f2b9397c004d1cd1552a5d65d1`; user confirms power-off key works. Touch is still unconfirmed/nonfunctional per latest user reports. Linux SM6225 Khaje DT and `qcom_smd-regulator.c` show touch `vcc_i2c` on PM6125 L9A, requested through RPM-SMD (`ldoa`, id 9, `swen=1`, 1.8V); current XNU code deliberately preserves firmware rail state because it lacks that transport. Do not claim a real touch fix without implementing this path and confirming first-contact/UI input on device.
+- Web source check: upstream Linux MSM DRM/Adreno is a Qualcomm Linux driver stack (`drivers/gpu/drm/msm`, `adreno_device.c`), while Apple’s MDM wallpaper command confirms iOS 16 first wallpaper setting targets both lock/home only through an MDM command. These do not provide an iOS Adreno XNU/Metal driver or an offline PosterBoard apply method. GPU enablement is therefore not a rootfs tweak; no GPU fix has been built.
+- Next concrete kernel work: implement/validate PM6125 RPM-SMD request transport in XNU using the active Khaje DT and Linux protocol as reference, then CI-build and physically test. GPU needs a separate XNU accelerator/userspace stack; do not transplant AppleAGX from an Apple GPU device.
+
 ## Agent handoff / active work (2026-10-20, newest)
 
 ### >>> UPDATE 2026-10-21: fix PMIC observer window base <<<
