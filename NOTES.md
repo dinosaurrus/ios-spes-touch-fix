@@ -534,3 +534,5 @@ What it took today (in order): 0058 HID services (Apple IOHIDFamily-1915 user cl
      cpu_init, before arm_vm_init.
   5. panic hook at top of panic_trap_to_debugger: va_copy + _doprnt(fmt, &copy, sweet_early_putc, 16).
   Verify with tools/xnu-cc.py (compile+symbols) and patch-order simulation before the single CI run.
+
+- **Spes display keepalive candidate (0104):** the existing IOMFB selector-12 implementation fades the framebuffer to black over six vsyncs after a display-off request. The Spes boot logs show iOS progressing into userland while the display fades, matching this path. With `sweetspes=1`, the framebuffer now ignores display-off requests and keeps the current panel image visible; Sweet retains its existing fade behavior. Package as a new image from the tested RPM GLINK L9A base, preserving its shim, ADT, and ramdisk. Hardware confirmation is still required.

@@ -14,9 +14,9 @@ REPO = "dinosaurrus/ios-spes-touch-fix"
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BASE = pathlib.Path(
     "/home/dino/İndirilenler/MIO-KITCHEN-4.2.1-linux/spesios16touch/"
-    "spes-touch-boot-fixed-power-volume-keys-observer-fixed-v2.img"
+    "spes-touch-boot-fixed-rpm-glink-l9a-v1.img"
 )
-OUTPUT = BASE.with_name("spes-touch-boot-fixed-rpm-glink-l9a-v1.img")
+OUTPUT = BASE.with_name("spes-touch-boot-fixed-rpm-glink-l9a-screen-keepalive-v1.img")
 MKBOOTIMG = pathlib.Path("/usr/share/android-tools/mkbootimg/mkbootimg.py")
 
 
@@ -136,7 +136,8 @@ def main():
                     b"SWEET KEYS: APID map scan count=",
                     b"SWEET KEYS: APID scan begin",
                     b"SWEET KEYS: PON read begin",
-                    b"SWEET KEYS: key=")
+                    b"SWEET KEYS: key=",
+                    b"Spes ignored display-off request; keep framebuffer visible")
         missing = [item.decode() for item in required if item not in new_kernel]
         if missing:
             raise RuntimeError(f"new touch stage markers missing: {missing}")
@@ -144,7 +145,7 @@ def main():
     digest = hashlib.sha256(OUTPUT.read_bytes()).hexdigest()
     print(f"Created: {OUTPUT}")
     print(f"SHA256:  {digest}")
-    print("Image checks: boot-v4, preserved shim/ADT/ramdisk, Spes touch and PMIC APID-map markers OK")
+    print("Image checks: boot-v4, preserved shim/ADT/ramdisk, Spes touch/PMIC and display-keepalive markers OK")
 
 
 if __name__ == "__main__":

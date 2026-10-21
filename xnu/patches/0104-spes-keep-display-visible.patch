@@ -1,0 +1,32 @@
+--- a/iokit/Kernel/arm/SweetFramebuffer.cpp
++++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
+@@ -116,6 +116,7 @@
+ 	uint32_t      fFlushTicks;    /* vsync ticks between panel copies */
+ 	bool          fPowerOff;      /* RequestPowerChange(0) */
+ 	uint32_t      fFadeStep;      /* fade-out steps done while off */
++	bool          fSpesKeepDisplay; /* Spes has no panel power controller */
+ 
+ 	bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
+ 	void addClient(IOMobileFramebufferUserClient *client);
+@@ -168,6 +169,10 @@
+ 	}
+ 	int native = 0;
+ 	PE_parse_boot_argn("sweetfb_native", &native, sizeof(native));
++	int spes = 0;
++	fSpesKeepDisplay = PE_parse_boot_argn("sweetspes", &spes, sizeof(spes)) && spes != 0;
++	fPowerOff = false;
++	fFadeStep = 0;
+ 	fLogicalW = fWidth;
+ 	fLogicalH = fHeight;
+ 	if (!native && fWidth <= SWEET_FB_LOGICAL_W && fHeight <= SWEET_FB_LOGICAL_H) {
+@@ -535,6 +540,10 @@
+ 	case kSweetFBRequestPowerChange:
+ 		if (args->scalarInputCount >= 1) {
+ 			bool off = args->scalarInput[0] == 0;
++			if (off && fFB->fSpesKeepDisplay) {
++				IOLog("SWEET FB: Spes ignored display-off request; keep framebuffer visible\n");
++				break;
++			}
+ 			IOLockLock(fFB->fLock);
+ 			if (off != fFB->fPowerOff) {
+ 				fFB->fPowerOff = off;
