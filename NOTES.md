@@ -2,6 +2,11 @@
 
 ## Agent handoff / active work (2026-10-20, newest)
 
+### >>> UPDATE 2026-10-21: fix PMIC observer window base <<<
+- New trace-image photo identifies the failure: APID search successfully finds PM6125 PON at APID 143 and GPIO5 at APID 153, then stops at `PON read begin apid=143 addr=0x810`; no observer completion occurs.
+- Compared `/home/dino/ios-spes/kernel/sm6225/arch/arm64/boot/dts/vendor/qcom/khaje.dtsi` resource names: `0x1e00000` is `chnls` (write path), while `0x3e00000` is `obsrvr` (read path) with a 0x100000 resource. The key poller had mapped `0x1e00000` as its observer read base. This is the concrete cause of the stuck PON/GPIO observer read.
+- Added `0102-spes-spmi-observer-base.patch`: map the read-only observer at PA 0x3e00000 for 0x100000 bytes. Patch dry-run passes on the exact source artifact from CI run 39495720379. The new image is based on the trace candidate and has a distinct output path. Build/package pending.
+
 ### >>> UPDATE 2026-10-20: Spes key probe still has no result line <<<
 - User tested the APID-count image and supplied a photo showing `version read returned=0x50010000` and `APID map scan count=512`, followed by ordinary kernel initialization; the log contains no `target=Spes-PM6125`/APID result or key event. This confirms the corrected version read and bounded table selection are reached, but does not identify whether the map scan or an observer transaction is the remaining blocker.
 - Rechecked Linux `spmi-pmic-arb.c` and Khaje DT: v5 APID map begins at core+0x900, ownership at config+0x700, observer channels at `0x10000*EE + 0x80*APID`; the configured core length 0x1100 yields 512 entries. Linux's v5 command formatter intentionally sends the low 8-bit register offset because the APID channel already selects the peripheral. The current local source matches these facts.

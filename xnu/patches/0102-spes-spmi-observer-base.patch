@@ -1,0 +1,9 @@
+# Correct the Spes SPMI read base from Khaje DT: obsrvr is 0x3e00000.
+--- a/bsd/dev/sweet_keys.c
++++ b/bsd/dev/sweet_keys.c
+@@ -23,1 +23,1 @@
+-#define SPES_KEYS_OBS_PA  0x01e00000u
++#define SPES_KEYS_OBS_PA  0x03e00000u
+@@ -159,1 +159,1 @@
+-		keys_obs = ml_io_map(SPES_KEYS_OBS_PA, 0x10000);
++		keys_obs = ml_io_map(SPES_KEYS_OBS_PA, 0x100000);

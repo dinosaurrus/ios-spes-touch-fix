@@ -14,9 +14,9 @@ REPO = "dinosaurrus/ios-spes-touch-fix"
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BASE = pathlib.Path(
     "/home/dino/İndirilenler/MIO-KITCHEN-4.2.1-linux/spesios16touch/"
-    "spes-touch-boot-fixed-power-volume-keys-apid.img"
+    "spes-touch-boot-fixed-power-volume-keys-apid-trace.img"
 )
-OUTPUT = BASE.with_name("spes-touch-boot-fixed-power-volume-keys-apid-trace.img")
+OUTPUT = BASE.with_name("spes-touch-boot-fixed-power-volume-keys-observer-fixed.img")
 MKBOOTIMG = pathlib.Path("/usr/share/android-tools/mkbootimg/mkbootimg.py")
 
 
