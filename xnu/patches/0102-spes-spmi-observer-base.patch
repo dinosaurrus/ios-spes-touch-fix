@@ -1,9 +1,21 @@
 # Correct the Spes SPMI read base from Khaje DT: obsrvr is 0x3e00000.
 --- a/bsd/dev/sweet_keys.c
 +++ b/bsd/dev/sweet_keys.c
-@@ -23,1 +23,1 @@
+@@ -23,7 +23,7 @@
+ #define KEYS_PON_RT      0x0810u
+ #define KEYS_GPIO_RT     0xc110u
+ #define SPES_KEYS_CORE_PA 0x01c40000u
 -#define SPES_KEYS_OBS_PA  0x01e00000u
 +#define SPES_KEYS_OBS_PA  0x03e00000u
-@@ -159,1 +159,1 @@
+ #define SPES_KEYS_CNFG_PA 0x01c0a000u
+ #define SPES_KEYS_GPIO_RT 0xc410u /* PM6125 GPIO5 runtime status */
+ #define KEYS_NO_APID     0xffffu
+@@ -156,7 +156,7 @@
+ 		keys_cnfg = ml_io_map(SPES_KEYS_CNFG_PA, 0x26000);
+ 		printf("SWEET KEYS: map config returned va=%p\n", (void *)keys_cnfg);
+ 		printf("SWEET KEYS: map begin observer pa=%#x\n", SPES_KEYS_OBS_PA);
 -		keys_obs = ml_io_map(SPES_KEYS_OBS_PA, 0x10000);
 +		keys_obs = ml_io_map(SPES_KEYS_OBS_PA, 0x100000);
+ 		printf("SWEET KEYS: map observer returned va=%p\n", (void *)keys_obs);
+ 		keys_gpio_rt = SPES_KEYS_GPIO_RT;
+ 	} else {

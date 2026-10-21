@@ -16,7 +16,7 @@ BASE = pathlib.Path(
     "/home/dino/İndirilenler/MIO-KITCHEN-4.2.1-linux/spesios16touch/"
     "spes-touch-boot-fixed-power-volume-keys-apid-trace.img"
 )
-OUTPUT = BASE.with_name("spes-touch-boot-fixed-power-volume-keys-observer-fixed.img")
+OUTPUT = BASE.with_name("spes-touch-boot-fixed-power-volume-keys-observer-fixed-v2.img")
 MKBOOTIMG = pathlib.Path("/usr/share/android-tools/mkbootimg/mkbootimg.py")
 
 
