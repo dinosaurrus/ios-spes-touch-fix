@@ -19,6 +19,19 @@ python3 tools/mkadt.py shim/out/topaz.adt --device topaz
 
 The Spes profile conservatively places XNU in a 3 GiB middle-bank range at `0x80000000`, avoiding the upper-bank address used by the larger Topaz profile; `--highmem` remains an explicit override. The exact physical RAM map still needs confirmation from a live Spes FDT. The active Spes DT overlay identifies `qcom,khaje-idp`, a 1080×2400 panel, and `focaltech,fts` touch at I²C `0x38`; Topaz's FT5452 touch driver must not be copied to Spes. The iPhone X userland intentionally uses a 1125×2436 logical display over the 1080×2400 panel. Patch `0085` ports Topaz `0114`'s 16-byte panel-window alignment and keeps touch coordinates aligned with that window. This fixes scanout/input alignment only; it does not explain a `backboardd` loop by itself.
 
+### Redmi Note 8 (Ginkgo) image packaging experiment
+
+`tools/build_ginkgo_boot.py` packages the existing XNU kernel as an Android boot-v2 **probe image** using a Ginkgo boot image as its DTB donor. It requires the contiguous RAM range from the phone's live FDT:
+
+```sh
+python3 tools/build_ginkgo_boot.py \
+  --boot ginkgo-stock-boot.img \
+  --memory-base 0x... --memory-size 0x... \
+  --output out/ginkgo-xnu-probe-boot.img
+```
+
+This only builds the container and hands off to XNU. It is **not a bootable iOS system**: the current kernel has no Ginkgo SDHCI/eMMC root driver, and the Android userdata partition is not an iOS HFS+ root. The script refuses to guess the RAM window and does not flash anything. Do not use it as a daily boot image.
+
 Topaz's later patches are not one generic fix: several directly program its MDP/DSI/panel and FT5452 hardware. The Spes boot currently reaches `backboardd` and creates IOSurfaces, but no Home screen is confirmed yet. Its first root-image tweak also ran before iOS had created the `mobileactivationd` system container, so the activation data ark was skipped. On a fresh image the tweak script now leaves Setup enabled in that case; boot once so iOS creates its system container, then apply the tweaks again before the home-screen boot. Do not claim the Spes ROM is complete until that boot reaches SpringBoard.
 
 ## What works

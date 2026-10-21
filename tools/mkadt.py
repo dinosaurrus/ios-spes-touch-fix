@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the minimal Apple Device Tree for the SM6225 Topaz and Spes ports.
+"""Build the minimal Apple Device Tree for supported Qualcomm phone ports.
 
 Only what the early boot path actually reads (see NOTES.md); the shared SoC
 addresses come from SM6225/Khaje device trees. Device identity is selected
@@ -40,6 +40,7 @@ FB, FB_SIZE = 0x5c000000, 0xf00000
 DEVICE_ECIDS = {
     'topaz': 0x544f50415a000001,  # 'TOPAZ' + 1, synthetic
     'spes':  0x5350455300000001,  # 'SPES' + 1, synthetic
+    'ginkgo': 0x47494e4b474f0001, # 'GINKGO' + 1, synthetic
 }
 FB_W, FB_H, FB_STRIDE = 1080, 2400, 1080 * 4
 # Internal UFS host (ufshc@4804000 "ufs_mem"); QEMU virt has none
@@ -84,7 +85,8 @@ def node(name, props=(), children=()):
     return n
 
 
-def build(seed=None, qemu=False, highmem=False, native=False, midmem=False, device='topaz'):
+def build(seed=None, qemu=False, highmem=False, native=False, midmem=False, device='topaz',
+          memory_base=None, memory_size=None):
     """Build the shared Khaje ADT with a device-specific identity.
 
     qemu=True substitutes QEMU virt's GIC addresses and CNTFRQ.
@@ -93,10 +95,16 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False, devi
         raise ValueError(f'unsupported device profile: {device}')
     ecid = DEVICE_ECIDS[device]
     boot_manifest_hash = hashlib.sha384(f'{device} boot manifest'.encode()).digest()
+    # Never guess Ginkgo's usable RAM range: Android DTBs often leave /memory
+    # empty because the bootloader fills it from the live hardware FDT.
+    if device == 'ginkgo' and (memory_base is None or memory_size is None):
+        raise ValueError('Ginkgo requires --memory-base and --memory-size from a live device FDT')
     phys_base, mem_size = ((MID_PHYS_BASE, MID_MEM_SIZE) if midmem else
                            (HIGH_PHYS_BASE, HIGH_MEM_SIZE) if highmem else
                            (SPES_PHYS_BASE, SPES_MEM_SIZE) if device == 'spes' else
+                           (memory_base, memory_size) if device == 'ginkgo' else
                            (PHYS_BASE, MEM_SIZE))
+    fb_height = 2340 if device == 'ginkgo' else FB_H
     gicd, gicr, timebase = (QEMU_GICD, QEMU_GICR, QEMU_TIMEBASE) if qemu else (GICD, GICR, TIMEBASE)
     seed = seed if seed is not None else os.urandom(64)
     phandle = iter(range(1, 1000))
@@ -145,7 +153,7 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False, devi
         # with CSR_ALLOW_UNRESTRICTED_FS (vm_unix.c shared region checks).
         node('asmb', [ph(), ('lp-sip0', u64(0x6f)), ('lp-sip1', u32(1))])])
 
-    # TOPAZ SMP: only the four Cortex-A73 (gold) cores, MPIDR 0x100-0x103:
+    # TOPAZ/GINKGO SMP: only the four Cortex-A73 (gold) cores, MPIDR 0x100-0x103:
     # the Kryo 260 Silver cores have no 16K granule, so the shim boots xnu
     # on gold CPU 0x100 and parks the silver cluster. One cluster. The kernel defaults to one
     # and uses cpus=N to select an initial prefix (N <= 8).
@@ -206,14 +214,14 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False, devi
             # which must match the canvas: sweetfb_native=1 with a 1125x2436 canvas makes
             # backboardd ask for a hardware scaler that does not exist)
             ('canvas-width', u32(1080 if native else 1125)),
-            ('canvas-height', u32(2400 if native else 2436)),
+            ('canvas-height', u32(fb_height if native or device == 'ginkgo' else 2436)),
         ])])
 
     fbcon = node('sweet-fbcon', [
         ph(),
         ('reg', u64(FB, FB_SIZE)),
         ('width', u32(FB_W)),
-        ('height', u32(FB_H)),
+        ('height', u32(fb_height)),
         ('stride', u32(FB_STRIDE)),
     ])
 
@@ -222,6 +230,18 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False, devi
         ph(),
         ('compatible', cstr('qcom,ufshc')),
         ('reg', u64(UFS, UFS_SIZE)),
+    ])
+
+    # Redmi Note 8 (ginkgo, SM6125/Trinket) boots from soldered eMMC on
+    # SDCC1. Keep this separate from the SM6225/Topaz UFS device. The kernel
+    # SDHCI driver consumes this absolute physical range and leaves the
+    # bootloader-configured controller clocks/rails untouched.
+    sdhci = node('sweet-sdhci', [
+        ph(),
+        ('compatible', cstr('qcom,sdhci-msm-v5')),
+        ('reg', u64(0x04744000, 0x1000)),
+        ('bus-width', u32(8)),
+        ('logical-block-size', u32(512)),
     ])
 
     # pmap_compute_max_asids requires the node even when no overrides are set.
@@ -248,14 +268,16 @@ def build(seed=None, qemu=False, highmem=False, native=False, midmem=False, devi
     # the existing SweetPlatformExpert and CPU IONameMatch use that alias.
     return node('device-tree', [
         ph(),
-        ('compatible', cstr('D22AP') + cstr('iPhone10,3') + cstr(f'xiaomi,{device}') + cstr('xiaomi,sweet') + cstr('qcom,khaje') + cstr('AppleARM')),
+        ('compatible', cstr('D22AP') + cstr('iPhone10,3') + cstr(f'xiaomi,{device}') +
+                       cstr('xiaomi,sweet') + cstr('qcom,trinket' if device == 'ginkgo' else 'qcom,khaje') + cstr('AppleARM')),
         ('model', cstr('iPhone10,3')),
         ('target-type', cstr('D22')),
         ('target-sub-type', cstr('D22AP')),
         ('manufacturer', cstr('Apple Inc.')),
         ('#address-cells', u32(2)),
         ('#size-cells', u32(2)),
-    ], [chosen, defaults, cpus, arm_io, fbcon, buttons] + product + ([] if qemu else [ufs]))
+    ], [chosen, defaults, cpus, arm_io, fbcon, buttons] + product +
+       ([] if qemu else ([sdhci] if device == 'ginkgo' else [ufs])))
 
 
 if __name__ == '__main__':
@@ -269,10 +291,13 @@ if __name__ == '__main__':
     parser.add_argument('--highmem', action='store_true', help='place kernel RAM in upper DDR')
     parser.add_argument('--midmem', action='store_true', help='place kernel RAM in middle DDR')
     parser.add_argument('--native', action='store_true', help='use native 1080x2400 display canvas')
+    parser.add_argument('--memory-base', type=lambda x: int(x, 0), help='Ginkgo usable contiguous RAM base (hex or decimal)')
+    parser.add_argument('--memory-size', type=lambda x: int(x, 0), help='Ginkgo usable contiguous RAM size (hex or decimal)')
     parser.add_argument('--dump', action='store_true', help='print the serialized ADT')
     args = parser.parse_args()
     root = build(qemu=args.qemu, highmem=args.highmem, native=args.native,
-                 midmem=args.midmem, device=args.device)
+                 midmem=args.midmem, device=args.device,
+                 memory_base=args.memory_base, memory_size=args.memory_size)
     blob = adt.serialize(root)
     with open(args.output, 'wb') as out:
         out.write(blob)
