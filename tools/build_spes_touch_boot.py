@@ -67,9 +67,14 @@ def payload_info(kernel):
 
 
 def main():
+    global BASE, OUTPUT
     run_id = sys.argv[1] if len(sys.argv) > 1 else "39464448670"
     if len(sys.argv) > 2:
-        raise SystemExit(f"usage: {sys.argv[0]} [github-actions-run-id]")
+        BASE = pathlib.Path(sys.argv[2])
+    if len(sys.argv) > 3:
+        OUTPUT = pathlib.Path(sys.argv[3])
+    if len(sys.argv) > 4:
+        raise SystemExit(f"usage: {sys.argv[0]} [github-actions-run-id] [base-boot.img] [output-boot.img]")
     if OUTPUT.exists():
         raise SystemExit(f"refusing to overwrite existing output: {OUTPUT}")
     for path in (BASE, MKBOOTIMG, ROOT / "tools/mkpayload.py"):
@@ -136,8 +141,7 @@ def main():
                     b"SWEET KEYS: APID map scan count=",
                     b"SWEET KEYS: APID scan begin",
                     b"SWEET KEYS: PON read begin",
-                    b"SWEET KEYS: key=",
-                    b"Spes ignored display-off request; keep framebuffer visible")
+                    b"SWEET KEYS: key=")
         missing = [item.decode() for item in required if item not in new_kernel]
         if missing:
             raise RuntimeError(f"new touch stage markers missing: {missing}")
@@ -145,7 +149,8 @@ def main():
     digest = hashlib.sha256(OUTPUT.read_bytes()).hexdigest()
     print(f"Created: {OUTPUT}")
     print(f"SHA256:  {digest}")
-    print("Image checks: boot-v4, preserved shim/ADT/ramdisk, Spes touch/PMIC and display-keepalive markers OK")
+    display_policy = "display-keepalive" if b"Spes ignored display-off request" in new_kernel else "original-display-policy"
+    print(f"Image checks: boot-v4, preserved shim/ADT/ramdisk, Spes touch/PMIC markers OK ({display_policy})")
 
 
 if __name__ == "__main__":
