@@ -1,3 +1,10 @@
+### >>> UPDATE 2026-10-21: one-shot RPM GLINK L9A request for Spes touch <<<
+- Cross-checked Khaje DT (`rpm-glink`, 0x045f0000/0x7000 message RAM, APCS IPC bit 0) and Linux `qcom_glink_rpm.c`, `rpm-smd.c`, and `qcom_smd-regulator.c`: L9A is `ldoa` id 9, initialized to 1.8 V; its consumer voltage/enable requests are RPM KVPs on the active set. The separate `qcom,rpm-smd` node name does not mean the XNU driver can write a direct SMD packet; the actual link is GLINK.
+- Checked same-SoC public TopazRpm source. Its tested GLINK VERSION/OPEN/ACK flow and `rpm_requests` message encoding provide a direct protocol reference; it specifically avoids a second handshake when FIFO indices are already used because that previously crashed RPM.
+- Added `0103-spes-rpm-glink-l9a-touch.patch`: map/validate RPM TOC, refuse non-empty FIFOs, open `rpm_requests`, send L9A `uv=1800000` then `swen=1` active-set KVPs, require ACKs, and keep the FT controller in reset on any transport/request failure. This is one-shot and polled; it does not touch the phone partition or start a second RPM link when detected in use.
+- Updated the packaging script to use the user-tested observer-v2 image as immutable base and write a separate `spes-touch-boot-fixed-rpm-glink-l9a-v1.img`; it now requires the GLINK and ACK markers. Base image SHA remains `3b9849d095721a62a90bf8456871458ebc5e39f2b9397c004d1cd1552a5d65d1`.
+- Local validation so far: patch applies to the assembled XNU source, packager passes Python syntax compilation, `git diff --check` clean. Await macOS XNU CI compile and packaging. Hardware is not attached; even a successful compile is not proof that the panel reports touch.
+
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
 ## Agent handoff / active work (2026-10-21, newest)

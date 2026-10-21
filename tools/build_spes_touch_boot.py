@@ -14,9 +14,9 @@ REPO = "dinosaurrus/ios-spes-touch-fix"
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BASE = pathlib.Path(
     "/home/dino/İndirilenler/MIO-KITCHEN-4.2.1-linux/spesios16touch/"
-    "spes-touch-boot-fixed-power-volume-keys-apid-trace.img"
+    "spes-touch-boot-fixed-power-volume-keys-observer-fixed-v2.img"
 )
-OUTPUT = BASE.with_name("spes-touch-boot-fixed-power-volume-keys-observer-fixed-v2.img")
+OUTPUT = BASE.with_name("spes-touch-boot-fixed-rpm-glink-l9a-v1.img")
 MKBOOTIMG = pathlib.Path("/usr/share/android-tools/mkbootimg/mkbootimg.py")
 
 
@@ -126,7 +126,8 @@ def main():
         if new_ramdisk != ramdisk.read_bytes():
             raise RuntimeError("original ramdisk changed")
         required = (b"QUP0/SE2 clock init ready", b"SE2 init ready",
-                    b"reset asserted", b"L9A uses RPM-SMD",
+                    b"reset asserted", b"SWEET RPM: clean RPM GLINK FIFOs",
+                    b"L9A 1.8V active request ACKED",
                     b"FT3418 first contact", b"report-frame-aligned",
                     b"probe sequence begin",
                     b"FT5452 idle frame; release all contacts",
