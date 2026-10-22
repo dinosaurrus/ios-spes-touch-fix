@@ -1,0 +1,66 @@
+diff --git a/bsd/dev/sweet_touch_spes_diag.inc b/bsd/dev/sweet_touch_spes_diag.inc
+new file mode 100644
+--- /dev/null
++++ b/bsd/dev/sweet_touch_spes_diag.inc
+@@ -0,0 +1,42 @@
++/*
++ * spes (Redmi Note 11, SM6225/Khaje) touch IC diagnostics.
++ *
++ * Values taken from the stock dtbo (SPES KHAJE IDP): touch bus is
++ * qupv3_se2_i2c (GPIO 6/7), IRQ GPIO 80, reset GPIO 86, AVDD GPIO 98,
++ * rail pm6125_l9. The same bus/IRQ/reset carry three candidate ICs:
++ * Focaltech 0x38, Synaptics TCM 0x20, Novatek 0x62 (Goodix 0x5d is
++ * already probed by sweet_touch.c).
++ *
++ * Include from sweet_touch.c AFTER touch_read() is defined, and call
++ * spes_touch_diag() once from the probe sequence, after reset is released
++ * and the controller wait is over. It only reads; it changes no state.
++ * Uses the in-tree helper signature:
++ * int touch_read(uint8_t addr, uint16_t reg, bool wide,
++ *                uint8_t *buf, unsigned len).
++ */
++#define SPES_ADDR_FTS  0x38u
++#define SPES_ADDR_SYN  0x20u
++#define SPES_ADDR_NVT  0x62u
++
++static void
++spes_touch_diag(void)
++{
++	static const uint8_t addrs[] = { SPES_ADDR_FTS, SPES_ADDR_SYN, SPES_ADDR_NVT };
++	uint8_t b[8];
++
++	for (unsigned i = 0; i < sizeof(addrs); ++i) {
++		memset(b, 0xff, sizeof(b));
++		int err = touch_read(addrs[i], 0x00, false, b, sizeof(b));
++		printf("SPES DIAG: %#x reg0 err=%d data=%02x %02x %02x %02x %02x %02x %02x %02x\n",
++		    addrs[i], err, b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]);
++	}
++
++	/* Focaltech ID registers: 0xa3 = chip id high, 0x9f = chip id low,
++	 * 0xa6 = firmware version, 0xa8 = vendor id */
++	static const uint8_t ftregs[] = { 0xa3, 0x9f, 0xa6, 0xa8 };
++	for (unsigned i = 0; i < sizeof(ftregs); ++i) {
++		uint8_t v = 0xff;
++		int err = touch_read(SPES_ADDR_FTS, ftregs[i], false, &v, 1);
++		printf("SPES DIAG: fts reg %#x err=%d val=%02x\n", ftregs[i], err, v);
++	}
++}
+diff --git a/bsd/dev/sweet_touch.c b/bsd/dev/sweet_touch.c
+--- a/bsd/dev/sweet_touch.c
++++ b/bsd/dev/sweet_touch.c
+@@ -316,6 +316,8 @@ touch_probe_info(uint16_t reg, uint8_t *buf)
+ 	return err;
+ }
+ 
++#include "sweet_touch_spes_diag.inc"
++
+ static unsigned
+ touch_be16(const uint8_t *p)
+ {
+@@ -591,5 +593,6 @@ touch_thread(void *arg, wait_result_t result)
+ 	touch_wait(200);
+ 	uint8_t gid[32], legacy[32], fid1 = 0, fid2 = 0;
+ 	st.probing = true;
++	spes_touch_diag();
+ 	printf("SWEET TOUCH: probe sequence begin\n");
+ 	int ge = touch_probe_info(GOODIX_PID_REG, gid);
