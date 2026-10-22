@@ -485,3 +485,10 @@ What it took today (in order): 0058 HID services (Apple IOHIDFamily-1915 user cl
      cpu_init, before arm_vm_init.
   5. panic hook at top of panic_trap_to_debugger: va_copy + _doprnt(fmt, &copy, sweet_early_putc, 16).
   Verify with tools/xnu-cc.py (compile+symbols) and patch-order simulation before the single CI run.
+
+## Status 2026-10-23: Spes touch map hang report
+- User says latest boot stops after `SWEET TOUCH: mapping GCC/TLMM/SE2`.
+- Inspected the compiled source from GitHub Actions run 39863746339 and XNU `osfmk/arm/io_map.c`. The touch thread makes four normal `ml_io_map` calls (GCC 0x01400000/0x80000, TLMM West 0x00500000/0x58000, TLMM South 0x00900000/0x70000, SE2 0x04a88000/0x4000). Earlier device logs show these same ranges all returned mappings, so there is no evidence yet that the physical addresses are wrong.
+- Added patch 0092 with before/after markers around each call and an all-mappings-ready marker. The existing null-map check exits the touch thread. This is diagnostic instrumentation, not a proven touch fix; boot screen alone doesn't identify which call hangs.
+- Dry-run patch application against exact run-39863746339 compiled source succeeded. Next: commit/push patch to `spes-port`, trigger macOS XNU workflow, then package the resulting kernel with the user's ram-safe base image. Ask user for a photo of the next screen/pstore after trying it; the last visible map marker will identify the stalled operation.
+- Preserve untracked `last_kmsg` and `out/`; do not include them in the commit.

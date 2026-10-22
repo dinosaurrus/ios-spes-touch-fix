@@ -1,0 +1,33 @@
+diff --git a/bsd/dev/sweet_touch.c b/bsd/dev/sweet_touch.c
+--- a/bsd/dev/sweet_touch.c
++++ b/bsd/dev/sweet_touch.c
+--- a/bsd/dev/sweet_touch.c
++++ b/bsd/dev/sweet_touch.c
+@@ -569,14 +569,27 @@
+ 	printf("SWEET TOUCH: starting in %u s\n", delay_s);
+ 	touch_wait(delay_s * 1000u);
+ 	printf("SWEET TOUCH: mapping GCC/TLMM/SE2\n");
++	printf("SWEET TOUCH: map GCC begin pa=%#lx size=%#lx\n",
++	    (unsigned long)TOUCH_GCC_PA, (unsigned long)0x80000);
+ 	st.gcc = ml_io_map(TOUCH_GCC_PA, 0x80000);
++	printf("SWEET TOUCH: map GCC returned va=%#lx\n", (unsigned long)st.gcc);
++	printf("SWEET TOUCH: map TLMM-WEST begin pa=%#lx size=%#lx\n",
++	    (unsigned long)TOUCH_WEST_PA, (unsigned long)0x58000);
+ 	st.west = ml_io_map(TOUCH_WEST_PA, 0x58000);
++	printf("SWEET TOUCH: map TLMM-WEST returned va=%#lx\n", (unsigned long)st.west);
++	printf("SWEET TOUCH: map TLMM-SOUTH begin pa=%#lx size=%#lx\n",
++	    (unsigned long)TOUCH_SOUTH_PA, (unsigned long)0x70000);
+ 	st.south = ml_io_map(TOUCH_SOUTH_PA, 0x70000);
++	printf("SWEET TOUCH: map TLMM-SOUTH returned va=%#lx\n", (unsigned long)st.south);
++	printf("SWEET TOUCH: map SE2 begin pa=%#lx size=%#lx\n",
++	    (unsigned long)TOUCH_SE_PA, (unsigned long)0x4000);
+ 	st.se = ml_io_map(TOUCH_SE_PA, 0x4000);
++	printf("SWEET TOUCH: map SE2 returned va=%#lx\n", (unsigned long)st.se);
+ 	if (!st.gcc || !st.west || !st.south || !st.se) {
+ 		printf("SWEET TOUCH: MMIO mapping failed\n");
+ 		goto out;
+ 	}
++	printf("SWEET TOUCH: all MMIO mappings ready\n");
+ 	if (!touch_clocks() || !touch_se_init()) {
+ 		goto out;
+ 	}
