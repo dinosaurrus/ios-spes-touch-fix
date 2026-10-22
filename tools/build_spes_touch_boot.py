@@ -131,7 +131,8 @@ def main():
         if new_ramdisk != ramdisk.read_bytes():
             raise RuntimeError("original ramdisk changed")
         required = (b"QUP0/SE2 clock init ready", b"SE2 init ready",
-                    b"SPES DIAG:",
+                    b"SWEET TCM: reports enabled",
+                    b"selected Synaptics TCM",
                     b"reset asserted", b"SWEET RPM: clean RPM GLINK FIFOs",
                     b"L9A 1.8V active request ACKED",
                     b"FT3418 first contact", b"report-frame-aligned",
