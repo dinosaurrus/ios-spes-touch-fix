@@ -33,7 +33,7 @@ diff --git a/bsd/dev/sweet_touch.c b/bsd/dev/sweet_touch.c
  static unsigned
  touch_be16(const uint8_t *p)
  {
-@@ -501,6 +498,222 @@
+@@ -501,6 +498,224 @@
  	return 0;
  }
  
@@ -113,6 +113,8 @@ diff --git a/bsd/dev/sweet_touch.c b/bsd/dev/sweet_touch.c
 +		if (n == 2u) part[2] = payload[off + 1u];
 +		err = touch_msg(TOUCH_TCM_ADDR, part, n + 1u, NULL, 0, false);
 +		if (err) return err;
++		/* Match Xiaomi's 500–1000 us inter-chunk delay. */
++		delay(1);
 +		off += n;
 +	}
 +	return 0;
