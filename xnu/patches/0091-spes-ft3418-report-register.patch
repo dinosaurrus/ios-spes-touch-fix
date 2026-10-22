@@ -1,12 +1,14 @@
 diff --git a/bsd/dev/sweet_touch.c b/bsd/dev/sweet_touch.c
 --- a/bsd/dev/sweet_touch.c
 +++ b/bsd/dev/sweet_touch.c
-@@ -590,7 +590,9 @@
+@@ -594,13 +594,15 @@
+ touch_focaltech(void)
+ {
  	uint8_t buf[63];
  	int x[TOUCH_MAX] = {0}, y[TOUCH_MAX] = {0};
  	uint32_t mask = 0, seen = 0;
 -	int err = touch_read(0x38, 0, false, buf, sizeof(buf));
-+	/* MIUI FT3418 issues register 0x01, then stores report bytes after it. */
++	/* MIUI FT3418 starts its report read at register 0x01. */
 +	int err = touch_read(0x38, 1, false, buf, sizeof(buf));
  	if (err) {
  		return err;
