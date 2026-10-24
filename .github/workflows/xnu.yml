@@ -74,6 +74,19 @@ jobs:
           MAKEFLAGS: ${{ inputs.keep_going == 'false' && '' || '-k' }}
         run: bash build.sh
 
+      - name: Verify Spes FocalTech patch was applied
+        run: |
+          src=dxb/xnu/bsd/dev/sweet_touch.c
+          grep -Fq 'touch_read(0x38, 1, false, buf, sizeof(buf))' "$src"
+          grep -Fq 'unsigned n = buf[1] & 15u;' "$src"
+          grep -Fq 'buf + 2u + 6u * i' "$src"
+          grep -Fq 'if (px > 1079 || py > 2399)' "$src"
+          if grep -Fq 'buf[0] & 0x70u' "$src"; then
+            echo 'Stale FocalTech register-0 status check remains in the source' >&2
+            exit 1
+          fi
+          echo 'Spes FocalTech report-register and native-coordinate fix is present'
+
       - name: Package build tree for local compiles
         if: always()
         run: |
