@@ -1,5 +1,12 @@
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
+## Update 2026-10-24: Spes pmap panic / framebuffer address
+
+- The phone panic photo shows `pmap_assert_free` at physical `0x9c000000`; `handshake structure not initialized` is the panic-reporting/KDP follow-on. This is not evidence of insufficient RAM by itself.
+- The Spes vendor DTB reserves the boot framebuffer at `0x5c000000` with size `0x00f00000`; the Spes ADT already used that address, while the XNU early console, XNU mapping, and boot shim still hardcoded `0x9c000000` from a different board. That stale address fell inside the XNU-managed `0x80000000+0xc0000000` range and could leave a live kernel mapping over a page XNU later frees.
+- Added `xnu/patches/0091-spes-framebuffer-address.patch` to use `0x5c000000` in XNU's first-stage marker, identity map, final early-console alias, and panic console. Updated shim `FB_BASE`/`FB_PHYS` to the same Spes reserved range. RAM base and size remain unchanged; no speculative RAM reduction was made.
+- CI `40096902345` passed, including the Spes touch parser and framebuffer source guards. Built a separate boot-v4 image at `/home/dino/İndirilenler/MIO-KITCHEN-4.2.1-linux/spesios16touch/spes-touch-boot-fixed-focaltech-fb5c-v3.img`, SHA256 `bfedcff1ee15571b56c7cfd3ebb44c45cd890a31fd1d86461c3c553bf555477f`. Verified the embedded payload, Spes ADT framebuffer range, boot header and existing RAM bounds. Root `.simg` remains unchanged (SHA256 `99b58049685a7a414d581644bcb31807aa2fbbea627483df016a7afbb4757c83`). Hardware boot is still required to confirm the panic is gone.
+
 ## Update 2026-10-24: make Spes FocalTech fix apply in CI
 
 - User asked to adapt the Umi kernel/userland research to Spes hardware. Umi's working touch path is FTS521 bit-banged GPIO on PM8150 and its GPU is Adreno 650/Kona; Spes is FocalTech FT3418 on QUP0/SE2 with PM6125 and Adreno 610/Khaje. The Umi register tables and binary userland assets are not compatible to copy directly. No Spes Adreno 610 XNU driver was found in those sources, so GPU acceleration is still unsupported by this patch set.
