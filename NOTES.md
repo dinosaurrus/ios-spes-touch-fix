@@ -1,5 +1,14 @@
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
+## Update 2026-10-24: adapt Umi references for Spes touch
+
+- User requested adapting useful changes from `JopangJovan/hackios-xnu-kernel-umi` and its userland repo to the existing Spes XNU tree and the separate setup-only root image, without replacing either source artifact.
+- Hardware evidence: the active Khaje Spes overlay declares `focaltech,fts` at I²C `0x38`, report size for ten six-byte contacts, and native display coords `<0 0 1080 2400>`. The local Xiaomi FocalTech driver reads report register `0x01`, reads touch count from report offset 2 (including its command byte), extracts 12-bit X/Y from bytes 3–6, and treats bytes 7–8 as pressure/area. The captured Linux pstore includes `fts_ts` registering on `4a88000.i2c/i2c-1/1-0038`; this is Android/Linux evidence for the hardware path, not an iOS touch test.
+- Found two Spes parser errors: `0090-spes-ft5452-coordinate-scale.patch` imported Topaz's fractional-coordinate format and 1.25x scaling even though Spes's FocalTech report and device tree use native 1080×2400 coordinates; after `0091` shifted the read to register 1, the check on `buf[0] & 0x70` still interpreted the gesture-register byte as the old register-0 status byte and could reject valid reports.
+- Added `xnu/patches/0093-spes-focaltech-native-report-fix.patch` to restore native 12-bit coordinates and remove that stale status-bit check. Rebuilt `0091-spes-ft3418-report-register.patch` with a valid, generated hunk and Spes wording after the prior hunk header was found malformed. The ordered 0088–0093 series was applied to the available CI build tree; this is patch-application validation only, not a kernel build or hardware proof.
+- Umi-specific FTS521 GPIO wiring and Adreno 650/Kona GMU/SMMU/firmware do not match Spes FocalTech/QUP0-SE2 or Adreno 610/Khaje, so none of those register tables or binary userland assets are copied. No safe Spes Adreno 610 XNU driver was found in those Umi sources; GPU remains CPU-rendered. Userland Setup/wallpaper edits are unrelated to these Umi fixes and the supplied setup-only `.simg` is still untouched.
+- **Next:** commit the Spes parser patch and handoff update, push the existing `spes-port` branch to the authenticated `dinosaurrus/ios-spes-touch-fix` remote, run the macOS XNU workflow, inspect its result, then build a separately named boot image from the new kernel. Keep the supplied `.simg`, existing boot images, `last_kmsg`, and `out/` untouched. Do not claim touch or GPU works until tested on the phone.
+
 ## Update 2026-10-21: Redmi Note 8 (ginkgo) target investigation
 
 - User requested an iOS boot image for Redmi Note 8. This is a new target, separate from the existing Spes/Topaz port.

@@ -1,0 +1,28 @@
+diff --git a/bsd/dev/sweet_touch.c b/bsd/dev/sweet_touch.c
+--- a/bsd/dev/sweet_touch.c
++++ b/bsd/dev/sweet_touch.c
+@@ -455 +455,6 @@
+-	if ((buf[0] & 0x70u) || n > TOUCH_MAX) {
++	/*
++	 * Register 0x01 is the FocalTech gesture register; after the Spes
++	 * register-1 read, the touch count is buf[1] (register 0x02). The old
++	 * register-0 status mask must not be applied to this gesture byte.
++	 */
++	if (n > TOUCH_MAX) {
+@@ -477,4 +482,4 @@
+-		 * TopazTouch's FT5452 trace shows 12-bit coordinates 0..1349/2999
+-		 * plus two fractional bits in p[4]. Convert the 1.25x raw range to
+-		 * the iPhone X HID surface (1080x2400); rejecting at 1079/2399
+-		 * discarded almost every point in the rightmost/bottommost fifth.
++		 * Spes Khaje's FocalTech report uses the vendor FT layout: native
++		 * 12-bit X/Y in p[0..3], followed by pressure and area bytes.
++		 * Do not import Topaz FT5452 fractional-coordinate scaling here.
++		 * The active Spes overlay advertises a native 1080x2400 panel.
+@@ -482,3 +487 @@
+-		unsigned px4 = (px << 2) | (p[4] >> 6);
+-		unsigned py4 = (py << 2) | ((p[4] >> 4) & 3u);
+-		if (px4 > 5399u || py4 > 11999u) {
++		if (px > 1079u || py > 2399u) {
+@@ -487,2 +489,0 @@
+-		px = (px4 * 1080u) / 5400u;
+-		py = (py4 * 2400u) / 12000u;

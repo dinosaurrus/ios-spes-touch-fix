@@ -19,6 +19,8 @@ python3 tools/mkadt.py shim/out/topaz.adt --device topaz
 
 The Spes profile conservatively places XNU in a 3 GiB middle-bank range at `0x80000000`, avoiding the upper-bank address used by the larger Topaz profile; `--highmem` remains an explicit override. The exact physical RAM map still needs confirmation from a live Spes FDT. The active Spes DT overlay identifies `qcom,khaje-idp`, a 1080×2400 panel, and `focaltech,fts` touch at I²C `0x38`; Topaz's FT5452 touch driver must not be copied to Spes. The iPhone X userland intentionally uses a 1125×2436 logical display over the 1080×2400 panel. Patch `0085` ports Topaz `0114`'s 16-byte panel-window alignment and keeps touch coordinates aligned with that window. This fixes scanout/input alignment only; it does not explain a `backboardd` loop by itself.
 
+The Umi kernel is a reference for bring-up discipline, not a drop-in driver source: it targets FTS521 bit-banged GPIO touch and Adreno 650/Kona, while Spes uses FocalTech on QUP0/SE2 and Adreno 610/Khaje. Spes patch `0093` removes the Topaz-only fractional-coordinate transform and the stale status-bit check after the report read moved to register `0x01`; it follows the Spes vendor driver's native 12-bit X/Y report layout and the Khaje 1080×2400 range. The Umi GPU register, GMU, firmware and SMMU setup is not applied to Spes; this branch still has no Spes GPU driver.
+
 ### Redmi Note 8 (Ginkgo) image packaging experiment
 
 `tools/build_ginkgo_boot.py` packages the existing XNU kernel as an Android boot-v2 **probe image** using a Ginkgo boot image as its DTB donor. It requires the contiguous RAM range from the phone's live FDT:
