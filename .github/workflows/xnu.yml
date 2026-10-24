@@ -81,6 +81,11 @@ jobs:
           grep -Fq 'unsigned n = buf[1] & 15u;' "$src"
           grep -Fq 'buf + 2u + 6u * i' "$src"
           grep -Fq 'if (px > 1079 || py > 2399)' "$src"
+          grep -Fq '#define TOUCH_RCG       0x1f3a8u' "$src"
+          if grep -Fq '0x3f3a8u' "$src"; then
+            echo 'SM6225 QUP0 clock command register uses the wrong GCC offset' >&2
+            exit 1
+          fi
           if grep -Fq 'buf[0] & 0x70u' "$src"; then
             echo 'Stale FocalTech register-0 status check remains in the source' >&2
             exit 1
