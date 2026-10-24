@@ -86,6 +86,15 @@ jobs:
             exit 1
           fi
           echo 'Spes FocalTech report-register and native-coordinate fix is present'
+          grep -Fq 'MOV64' dxb/xnu/osfmk/arm64/start.s
+          grep -Eq 'MOV64[[:space:]]+x10, 0x5c000000' dxb/xnu/osfmk/arm64/start.s
+          grep -Fq '0x5c000000ULL | ARM_TTE_VALID' dxb/xnu/osfmk/arm64/arm_vm_init.c
+          grep -Fq '(uintptr_t)0x5c000000' dxb/xnu/osfmk/arm64/sweet_early.c
+          if grep -Fq '0x9c000000' dxb/xnu/osfmk/arm64/start.s dxb/xnu/osfmk/arm64/arm_vm_init.c dxb/xnu/osfmk/arm64/sweet_early.c; then
+            echo 'Stale non-Spes framebuffer address remains in XNU' >&2
+            exit 1
+          fi
+          echo 'Spes framebuffer uses the vendor-DTB reserved address 0x5c000000'
 
       - name: Package build tree for local compiles
         if: always()
